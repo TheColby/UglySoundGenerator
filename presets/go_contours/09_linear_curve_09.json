@@ -1,0 +1,19 @@
+{
+  "interpolation": "linear",
+  "points": [
+    {
+      "t": 0.0,
+      "level": 317
+    },
+    {
+      "t": 0.5,
+      "level": 539
+    },
+    {
+      "t": 1.0,
+      "level": 309
+    }
+  ],
+  "version": 1,
+  "name": "09_linear_curve_09"
+}

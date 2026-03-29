@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "atari2600_shred",
+  "description": "Hard-edged square-wave abrasion with brutal gating.",
+  "stages": [
+    "glitch",
+    "crush",
+    "gate",
+    "stutter"
+  ]
+}

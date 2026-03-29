@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "arcade_overheat",
+  "description": "Hot cabinet shriek with noise bleed and transient punishments.",
+  "stages": [
+    "punish",
+    "pop",
+    "smear",
+    "stutter"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "ps1_grit",
+  "description": "Lo-fi console grind with stepy edges and decoder smear.",
+  "stages": [
+    "digital",
+    "crush",
+    "gate",
+    "smear"
+  ]
+}

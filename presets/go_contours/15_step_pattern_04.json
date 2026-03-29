@@ -1,0 +1,27 @@
+{
+  "interpolation": "step",
+  "points": [
+    {
+      "t": 0.0,
+      "level": 265
+    },
+    {
+      "t": 0.2,
+      "level": 255
+    },
+    {
+      "t": 0.4,
+      "level": 215
+    },
+    {
+      "t": 0.7,
+      "level": 685
+    },
+    {
+      "t": 1.0,
+      "level": 355
+    }
+  ],
+  "version": 1,
+  "name": "15_step_pattern_04"
+}

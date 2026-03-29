@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "rom_corruption",
+  "description": "A fake bad dump: unstable pitch, crunchy edges, and torn envelopes.",
+  "stages": [
+    "glitch",
+    "smear",
+    "crush",
+    "stutter",
+    "pop"
+  ]
+}

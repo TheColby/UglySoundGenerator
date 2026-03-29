@@ -1,0 +1,31 @@
+{
+  "interpolation": "linear",
+  "points": [
+    {
+      "t": 0.0,
+      "level": 360
+    },
+    {
+      "t": 0.15,
+      "level": 410
+    },
+    {
+      "t": 0.35,
+      "level": 860
+    },
+    {
+      "t": 0.6,
+      "level": 350
+    },
+    {
+      "t": 0.82,
+      "level": 650
+    },
+    {
+      "t": 1.0,
+      "level": 800
+    }
+  ],
+  "version": 1,
+  "name": "30_morph_pattern_08"
+}

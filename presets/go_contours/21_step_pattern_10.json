@@ -1,0 +1,27 @@
+{
+  "interpolation": "step",
+  "points": [
+    {
+      "t": 0.0,
+      "level": 281
+    },
+    {
+      "t": 0.2,
+      "level": 837
+    },
+    {
+      "t": 0.4,
+      "level": 473
+    },
+    {
+      "t": 0.7,
+      "level": 859
+    },
+    {
+      "t": 1.0,
+      "level": 457
+    }
+  ],
+  "version": 1,
+  "name": "21_step_pattern_10"
+}

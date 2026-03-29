@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "console_busfight",
+  "description": "Competing register writes rendered as ugly bus contention.",
+  "stages": [
+    "steal",
+    "gate",
+    "smear",
+    "pop"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "n64_rattle",
+  "description": "Wideband rasp with metallic buffer chatter.",
+  "stages": [
+    "buzz",
+    "stutter",
+    "smear",
+    "pop"
+  ]
+}

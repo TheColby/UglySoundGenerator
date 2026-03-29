@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "binaural_nuisance",
+  "description": "Spatial discomfort chain with unstable modulation and clicks.",
+  "stages": [
+    "hum",
+    "stutter",
+    "pop",
+    "smear"
+  ]
+}

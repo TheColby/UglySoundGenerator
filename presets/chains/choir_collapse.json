@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "choir_collapse",
+  "description": "A synthetic choir image falling into ugly pulsed damage.",
+  "stages": [
+    "hum",
+    "smear",
+    "gate",
+    "punish"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "chip_broken_clock",
+  "description": "Clock-jittered chip squeal with repeated temporal tears.",
+  "stages": [
+    "wink",
+    "stutter",
+    "crush",
+    "pop"
+  ]
+}

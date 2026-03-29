@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "cassette_headache",
+  "description": "Warped tape-ish chewiness driven into ugly digital breakup.",
+  "stages": [
+    "rub",
+    "smear",
+    "crush",
+    "gate"
+  ]
+}
