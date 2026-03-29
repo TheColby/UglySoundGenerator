@@ -82,6 +82,13 @@ Working directory note:
 - If your shell is already in `out/`, use `clean.wav` and `clean_preset.go.wav` instead of `out/clean.wav` and `out/clean_preset.go.wav`.
 - Preset paths are resolved from your current directory, so from `out/` use `../presets/go_contours/...`.
 
+## Bundled Corpus
+
+- `examples/audio/` contains a bundled 333-file example corpus.
+- [README_EXAMPLES.md](/Users/cleider/dev/UglySoundGenerator/README_EXAMPLES.md) documents the command used to make every shipped example WAV.
+- Regenerate the corpus from repo root with `./scripts/generate_example_corpus.sh`.
+- The corpus intentionally mixes `render`, `chain`, `go`, and `speech` paths so the examples exercise more than one subsystem.
+
 ## Ugly Recipes (Many CLI Examples)
 
 `usg render` is now streamed for long renders, so you can generate very large files without allocating the whole waveform in RAM.
@@ -242,6 +249,7 @@ Contour JSON schema:
 
 ```json
 {
+  "version": 1,
   "interpolation": "linear",
   "points": [
     { "t": 0.0, "level": 120 },
@@ -252,7 +260,8 @@ Contour JSON schema:
 ```
 
 - `t`: normalized time from `0.0` to `1.0`
-- `level`: ugliness target from `1` to `1000`
+- `level`: ugliness target from `0` to `1000`
+- `version`: contour schema version, currently `1`
 - `interpolation`: `linear` or `step`
 
 Contour preset library:
@@ -274,7 +283,7 @@ cargo run -- go out/clean.wav --level 850 --type dissonance-ring --output out/cl
 cargo run -- go out/clean.wav --level 780 --type dissonance-expand --output out/clean_expanded.go.wav
 cargo run -- go out/clean.wav --level 800 --type glitch --upmix 5.1 --coords cartesian --locus 0,1,0 --trajectory line:1,0,0 --output out/clean_51_move.go.wav
 cargo run -- go out/clean.wav --level 900 --type punish --upmix custom:12 --coords polar --locus 30,0,1.0 --trajectory orbit:1.2,4 --output out/clean_12ch_orbit.go.wav
-cargo run -- go out/clean.wav --type punish --level-contour-json '{"interpolation":"linear","points":[{"t":0.0,"level":120},{"t":0.35,"level":900},{"t":1.0,"level":300}]}' --output out/clean_contour.go.wav
+cargo run -- go out/clean.wav --type punish --level-contour-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"level":120},{"t":0.35,"level":900},{"t":1.0,"level":300}]}' --output out/clean_contour.go.wav
 cargo run -- go out/clean.wav --type glitch --level-contour presets/go_contours/12_step_pattern_01.json --output out/clean_contour_file.go.wav
 ```
 
@@ -770,17 +779,18 @@ w_c\,\mathrm{clip\_norm}
 \right)
 ```
 
-where each term is normalized against a reference corpus, and weights are fitted from listening tests.
+where each term is normalized into a comparable range and then combined by hand-tuned weights. This is a pragmatic psychoacoustic proxy, not a claim of formal listening-test calibration.
 
 ## Joke Math: The UglierBasis Equation
 
 This section is intentionally not the real model. It is a ceremonial overreaction for anyone who feels a normal ugliness score is insufficiently dramatic and also insufficiently covered in summation symbols.
 
+It is now written as a staged bureaucracy of sub-terms so the renderer does not spontaneously resign.
+
 ```math
-\begin{aligned}
-\mathfrak{U}_{\mathrm{UglierBasis}}(x)=1000\,\sigma\!\Bigg(
-&\frac{
-\displaystyle\sum_{m=1}^{M}\sum_{b=1}^{B}\sum_{q=1}^{Q}
+\Phi_{1}=
+\frac{
+\sum_{m=1}^{M}\sum_{b=1}^{B}\sum_{q=1}^{Q}
 \left[
 \frac{
 \left(\alpha_{1} C^{q}+\alpha_{2} R_{b}^{q}+\alpha_{3} S_{b}^{q}+\alpha_{4} D_{b}^{q}+\alpha_{5} T_{m}^{q}\right)
@@ -790,53 +800,57 @@ This section is intentionally not the real model. It is a ceremonial overreactio
 }
 \right]
 }{
-\displaystyle
 1+\sum_{m=1}^{M}\frac{1}{1+G_{m}+P_{m}+J_{m}}
 }
-\\[6pt]
-&+
+```
+
+```math
+\Phi_{2}=
 \frac{
-\displaystyle\sum_{m=1}^{M}
+\sum_{m=1}^{M}
 \frac{
 \sum_{b=1}^{B}(A_{b}+Z_{b}+Q_{b})^2
 }{
-1+\sum_{r=1}^{3}\frac{L_{m}^{\,r}}{1+r+N_{m}}
+1+\sum_{r=1}^{3}\frac{L_{m}^{r}}{1+r+N_{m}}
 }
 }{
-\displaystyle
 1+\sum_{m=1}^{M}\sum_{b=1}^{B}\frac{H_{b}}{1+E_{m}+Y_{m}}
 }
-\\[6pt]
-&+
+```
+
+```math
+\Phi_{3}=
 \frac{
-\displaystyle\prod_{b=1}^{B}
+\prod_{b=1}^{B}
 \left(
 1+\frac{\beta_{1} M_{b}+\beta_{2} V_{b}+\beta_{3} K_{b}}{1+\beta_{4} H_{b}}
-\right)^{\frac{1}{B}}
+\right)^{1/B}
 -1
 }{
-\displaystyle
-1+\prod_{m=1}^{M}\left(1+\frac{1}{1+G_{m}^{2}}\right)^{\frac{1}{M}}
+1+\prod_{m=1}^{M}\left(1+\frac{1}{1+G_{m}^{2}}\right)^{1/M}
 }
-\\[6pt]
-&+
+```
+
+```math
+\Phi_{4}=
 \sum_{m=1}^{M}
 \frac{
-\displaystyle\sum_{b=1}^{B}
+\sum_{b=1}^{B}
 \frac{
-\gamma_{1} \sin\!\big(\omega_{1}(B_{b}+F_{b}+Y_{m})\big)
-+\gamma_{2} \cos\!\big(\omega_{2}(A_{b}+Z_{b}+Q_{b})\big)
+\gamma_{1}\sin\!\big(\omega_{1}(B_{b}+F_{b}+Y_{m})\big)
++\gamma_{2}\cos\!\big(\omega_{2}(A_{b}+Z_{b}+Q_{b})\big)
 }{
 1+\frac{H_{b}}{1+I_{b}}+\frac{L_{m}}{1+T_{m}}
 }
 }{
-\displaystyle
 1+\sum_{b=1}^{B}\frac{1}{1+R_{b}S_{b}D_{b}}
 }
-\\[6pt]
-&+
+```
+
+```math
+\Phi_{5}=
 \frac{
-\displaystyle\sum_{m=1}^{M}\sum_{b=1}^{B}
+\sum_{m=1}^{M}\sum_{b=1}^{B}
 \frac{
 \left(\delta_{1} O_{b}+\delta_{2} A_{b}+\delta_{3} E_{m}+\delta_{4} N_{m}+\delta_{5} Y_{m}\right)
 \left(\delta_{6} X_{m}+\delta_{7} J_{m}+\delta_{8} V_{b}+\delta_{9} K_{b}\right)
@@ -844,37 +858,37 @@ This section is intentionally not the real model. It is a ceremonial overreactio
 1+\frac{H_{b}^{2}}{1+I_{b}}+\frac{T_{m}^{2}}{1+L_{m}}
 }
 }{
-\displaystyle
-1+\sum_{m=1}^{M}\sum_{b=1}^{B}
-\frac{1}{1+\left(C+R_{b}+S_{b}+D_{b}\right)^2}
+1+\sum_{m=1}^{M}\sum_{b=1}^{B}\frac{1}{1+\left(C+R_{b}+S_{b}+D_{b}\right)^{2}}
 }
-\\[6pt]
-&+
+```
+
+```math
+\Phi_{6}=
 \frac{
-\displaystyle\sum_{u=1}^{U}
-\prod_{v=1}^{V}
+\sum_{u=1}^{U}\prod_{v=1}^{V}
 \left(
-1+
-\frac{
-\kappa_{u v}^{(1)}C+\kappa_{u v}^{(2)}R+\kappa_{u v}^{(3)}S+\kappa_{u v}^{(4)}D+\kappa_{u v}^{(5)}A+\kappa_{u v}^{(6)}Z+\kappa_{u v}^{(7)}Q
+1+\frac{
+\kappa_{uv}^{(1)}C+\kappa_{uv}^{(2)}R+\kappa_{uv}^{(3)}S+\kappa_{uv}^{(4)}D+\kappa_{uv}^{(5)}A+\kappa_{uv}^{(6)}Z+\kappa_{uv}^{(7)}Q
 }{
-1+\kappa_{u v}^{(8)}H+\kappa_{u v}^{(9)}L+\kappa_{u v}^{(10)}T
+1+\kappa_{uv}^{(8)}H+\kappa_{uv}^{(9)}L+\kappa_{uv}^{(10)}T
 }
 \right)
 }{
-\displaystyle
-1+\sum_{u=1}^{U}\sum_{v=1}^{V}\frac{1}{1+\kappa_{u v}^{(11)}M+\kappa_{u v}^{(12)}P+\kappa_{u v}^{(13)}J}
+1+\sum_{u=1}^{U}\sum_{v=1}^{V}\frac{1}{1+\kappa_{uv}^{(11)}M+\kappa_{uv}^{(12)}P+\kappa_{uv}^{(13)}J}
 }
-\\[6pt]
-&-\lambda\,
+```
+
+```math
+\Phi_{7}=
 \frac{
-\displaystyle\sum_{b=1}^{B}H_{b}
+\sum_{b=1}^{B}H_{b}
 }{
-\displaystyle
 1+\sum_{b=1}^{B}\frac{1}{1+I_{b}+W_{b}}
 }
-\Bigg)
-\end{aligned}
+```
+
+```math
+\mathfrak{U}_{\mathrm{UglierBasis}}(x)=1000\,\sigma\!\left(\Phi_{1}+\Phi_{2}+\Phi_{3}+\Phi_{4}+\Phi_{5}+\Phi_{6}-\lambda\Phi_{7}\right)
 ```
 
 ### Radical explanation of the nonsense
@@ -997,11 +1011,6 @@ Ugliness, aesthetic negativity, and ugliness in music:
 - McNeilly, K. (1995). *Ugly Beauty: John Zorn and the Politics of Postmodern Music*. Included because it addresses “ugly” as an affirmative musical-aesthetic category rather than merely a failure mode. [Postmodern Culture](https://www.pomoculture.org/2013/09/24/ugly-beauty-john-zorn-and-the-politics-of-postmodern-music/)
 - Orestig, J. (2019). *“Sluta spela fin och gå loss”: Original Dunder Zubbis som lallande polyfoni*. Included here as a music ugliness reference in the broader sociocultural/aesthetic sense, rather than as a psychoacoustic study. [Article page](https://publicera.kb.se/tfl/article/view/7285)
 - Unger, M. P. (2016). *Sound, Symbol, Sociality: The Aesthetic Experience of Extreme Metal Music*. Not a direct “ugliness” title, but highly adjacent for sound, defilement, harshness, and the aesthetics of extreme musical experience. [Springer](https://link.springer.com/book/10.1057/978-1-137-47835-1)
-
-Colby Leider and adjacent project-specific references:
-
-- Leider, C. (2007). *Dissonance Theory of Sound Objects*. PhD dissertation, Princeton University. This is the most directly project-adjacent reference for the present repo because it connects dissonance theory to sound objects rather than only interval/chord judgment. [Referenced in DAFx-08 bibliography](https://soundlab.cs.princeton.edu/publications/diss_dafx2008.pdf)
-- Leider’s current biography and selected-writings page is also useful as a lightweight attribution source tying the dissertation title to Colby Leider’s broader research identity in DSP, sound synthesis, and tuning systems. [Colby Leider Acoustics](https://leider.org/about)
 
 Working synthesis for this repo:
 
