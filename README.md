@@ -376,6 +376,12 @@ Use `--json` to emit machine-readable output for scripting:
 cargo run -- analyze out/ugly.wav --json
 ```
 
+Use `--joke` when you want the analyzer to also compute the absurd `UglierBasis` score described later in this README:
+
+```bash
+cargo run -- analyze out/ugly.wav --model psycho --joke
+```
+
 Analyze supports two scoring models:
 
 - `--model basic`: Fast time-domain proxy (default)
@@ -785,111 +791,58 @@ where each term is normalized into a comparable range and then combined by hand-
 
 This section is intentionally not the real model. It is a ceremonial overreaction for anyone who feels a normal ugliness score is insufficiently dramatic and also insufficiently covered in summation symbols.
 
+For fun, the analyzer now has a matching `--joke` mode that computes a real `UglierBasis` score from the measured clip/roughness/sharpness/dissonance family and prints a verdict such as `academically ugly` or `please turn that off`.
+
 It is now written as a staged bureaucracy of sub-terms so the renderer does not spontaneously resign.
-
-```math
-\Phi_{1}=
-\frac{
-\sum_{m=1}^{M}\sum_{b=1}^{B}\sum_{q=1}^{Q}
-\left[
-\frac{
-\left(\alpha_{1} C^{q}+\alpha_{2} R_{b}^{q}+\alpha_{3} S_{b}^{q}+\alpha_{4} D_{b}^{q}+\alpha_{5} T_{m}^{q}\right)
-\left(1+\alpha_{6} I_{b}+\alpha_{7} B_{b}+\alpha_{8} F_{b}+\alpha_{9} W_{b}\right)
-}{
-1+\alpha_{10}H_{b}+\alpha_{11}L_{m}+\alpha_{12}\left|X_{m}-O_{b}\right|
-}
-\right]
-}{
-1+\sum_{m=1}^{M}\frac{1}{1+G_{m}+P_{m}+J_{m}}
-}
-```
-
-```math
-\Phi_{2}=
-\frac{
-\sum_{m=1}^{M}
-\frac{
-\sum_{b=1}^{B}(A_{b}+Z_{b}+Q_{b})^2
-}{
-1+\sum_{r=1}^{3}\frac{L_{m}^{r}}{1+r+N_{m}}
-}
-}{
-1+\sum_{m=1}^{M}\sum_{b=1}^{B}\frac{H_{b}}{1+E_{m}+Y_{m}}
-}
-```
-
-```math
-\Phi_{3}=
-\frac{
-\prod_{b=1}^{B}
-\left(
-1+\frac{\beta_{1} M_{b}+\beta_{2} V_{b}+\beta_{3} K_{b}}{1+\beta_{4} H_{b}}
-\right)^{1/B}
--1
-}{
-1+\prod_{m=1}^{M}\left(1+\frac{1}{1+G_{m}^{2}}\right)^{1/M}
-}
-```
-
-```math
-\Phi_{4}=
-\sum_{m=1}^{M}
-\frac{
-\sum_{b=1}^{B}
-\frac{
-\gamma_{1}\sin\!\big(\omega_{1}(B_{b}+F_{b}+Y_{m})\big)
-+\gamma_{2}\cos\!\big(\omega_{2}(A_{b}+Z_{b}+Q_{b})\big)
-}{
-1+\frac{H_{b}}{1+I_{b}}+\frac{L_{m}}{1+T_{m}}
-}
-}{
-1+\sum_{b=1}^{B}\frac{1}{1+R_{b}S_{b}D_{b}}
-}
-```
-
-```math
-\Phi_{5}=
-\frac{
-\sum_{m=1}^{M}\sum_{b=1}^{B}
-\frac{
-\left(\delta_{1} O_{b}+\delta_{2} A_{b}+\delta_{3} E_{m}+\delta_{4} N_{m}+\delta_{5} Y_{m}\right)
-\left(\delta_{6} X_{m}+\delta_{7} J_{m}+\delta_{8} V_{b}+\delta_{9} K_{b}\right)
-}{
-1+\frac{H_{b}^{2}}{1+I_{b}}+\frac{T_{m}^{2}}{1+L_{m}}
-}
-}{
-1+\sum_{m=1}^{M}\sum_{b=1}^{B}\frac{1}{1+\left(C+R_{b}+S_{b}+D_{b}\right)^{2}}
-}
-```
-
-```math
-\Phi_{6}=
-\frac{
-\sum_{u=1}^{U}\prod_{v=1}^{V}
-\left(
-1+\frac{
-\kappa_{uv}^{(1)}C+\kappa_{uv}^{(2)}R+\kappa_{uv}^{(3)}S+\kappa_{uv}^{(4)}D+\kappa_{uv}^{(5)}A+\kappa_{uv}^{(6)}Z+\kappa_{uv}^{(7)}Q
-}{
-1+\kappa_{uv}^{(8)}H+\kappa_{uv}^{(9)}L+\kappa_{uv}^{(10)}T
-}
-\right)
-}{
-1+\sum_{u=1}^{U}\sum_{v=1}^{V}\frac{1}{1+\kappa_{uv}^{(11)}M+\kappa_{uv}^{(12)}P+\kappa_{uv}^{(13)}J}
-}
-```
-
-```math
-\Phi_{7}=
-\frac{
-\sum_{b=1}^{B}H_{b}
-}{
-1+\sum_{b=1}^{B}\frac{1}{1+I_{b}+W_{b}}
-}
-```
 
 ```math
 \mathfrak{U}_{\mathrm{UglierBasis}}(x)=1000\,\sigma\!\left(\Phi_{1}+\Phi_{2}+\Phi_{3}+\Phi_{4}+\Phi_{5}+\Phi_{6}-\lambda\Phi_{7}\right)
 ```
+
+Renderer-safe pseudo-math for the sub-terms:
+
+```text
+Phi_1 = triple_sum_over_(m,b,q) of
+        [ (alpha1*C^q + alpha2*R_b^q + alpha3*S_b^q + alpha4*D_b^q + alpha5*T_m^q)
+          * (1 + alpha6*I_b + alpha7*B_b + alpha8*F_b + alpha9*W_b)
+          / (1 + alpha10*H_b + alpha11*L_m + alpha12*|X_m - O_b|) ]
+        divided by [1 + sum_m 1/(1 + G_m + P_m + J_m)]
+
+Phi_2 = sum_m [ sum_b (A_b + Z_b + Q_b)^2 / (1 + sum_r L_m^r/(1 + r + N_m)) ]
+        divided by [1 + sum_(m,b) H_b/(1 + E_m + Y_m)]
+
+Phi_3 = product_over_b [1 + (beta1*M_b + beta2*V_b + beta3*K_b)/(1 + beta4*H_b)]^(1/B) - 1
+        divided by [1 + product_over_m (1 + 1/(1 + G_m^2))^(1/M)]
+
+Phi_4 = sum_m of
+        { sum_b [ gamma1*sin(omega1*(B_b + F_b + Y_m))
+                + gamma2*cos(omega2*(A_b + Z_b + Q_b)) ]
+          / [1 + H_b/(1 + I_b) + L_m/(1 + T_m)] }
+        divided by [1 + sum_b 1/(1 + R_b*S_b*D_b)]
+
+Phi_5 = double_sum_over_(m,b) of
+        [ (delta1*O_b + delta2*A_b + delta3*E_m + delta4*N_m + delta5*Y_m)
+          * (delta6*X_m + delta7*J_m + delta8*V_b + delta9*K_b)
+          / (1 + H_b^2/(1 + I_b) + T_m^2/(1 + L_m)) ]
+        divided by [1 + sum_(m,b) 1/(1 + (C + R_b + S_b + D_b)^2)]
+
+Phi_6 = sum_u product_v
+        [ 1 + (kappa_uv^(1)*C + kappa_uv^(2)*R + kappa_uv^(3)*S + kappa_uv^(4)*D
+              + kappa_uv^(5)*A + kappa_uv^(6)*Z + kappa_uv^(7)*Q)
+              / (1 + kappa_uv^(8)*H + kappa_uv^(9)*L + kappa_uv^(10)*T) ]
+        divided by [1 + sum_(u,v) 1/(1 + kappa_uv^(11)*M + kappa_uv^(12)*P + kappa_uv^(13)*J)]
+
+Phi_7 = [sum_b H_b] divided by [1 + sum_b 1/(1 + I_b + W_b)]
+```
+
+Where the coefficient families are, of course, completely serious:
+
+- `\alpha`: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
+- `\beta`: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
+- `\gamma`: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
+- `\delta`: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
+- `\kappa`: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
+- `\lambda`: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
 
 ### Radical explanation of the nonsense
 
@@ -938,6 +891,25 @@ Practical interpretation:
 - If `C`, `R`, `S`, `D`, `A`, `Z`, and `Q` are all high, the sound is not just ugly; it is academically ugly.
 - If `H` is high, the equation sighs, lowers the score a little, and then raises it again somewhere else out of spite.
 - If every term is high at once, the sigmoid saturates near `1000`, which is the mathematically rigorous symbol for “please turn that off.”
+
+### Actual Implementation
+
+The analyzer now really computes a joke version of this score when you pass `--joke`:
+
+```bash
+cargo run -- analyze out/ugly.wav --joke
+cargo run -- analyze out/ugly.wav --model psycho --joke --json
+```
+
+What it actually does in code:
+
+- maps the real analysis metrics onto the joke variables: for example `C` comes from clip pressure, `R` from roughness, `S` from sharpness, `D` from dissonance, `T` from transient density, and `H` from harmonicity
+- derives the more theatrical variables like alias spray, zipper noise, modulation glare, and cadence collapse from combinations of the real psycho/basic metrics
+- computes an `academic_cluster_norm` from the exact “practical interpretation” group: `C`, `R`, `S`, `D`, `A`, `Z`, and `Q`
+- computes an `all_high_bonus_norm` so that when everything is bad at once, the score really does sprint toward `1000`
+- subtracts a little harmonicity relief and then adds back a bit of harmonicity-times-cluster spite, because the README explicitly demanded that harmonicity help only reluctantly
+
+The output includes a real `joke.uglierbasis_index`, a verdict such as `academically ugly` or `please turn that off`, and a structured breakdown in JSON mode.
 
 ## Appendix B
 
