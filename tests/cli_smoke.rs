@@ -274,3 +274,134 @@ fn go_supports_paper_dissonancizer_flavors() {
     let reader = WavReader::open(&output).expect("go output wav");
     assert!(reader.duration() > 1_000);
 }
+
+#[test]
+fn go_defaults_to_192khz_for_upmix_output() {
+    let dir = temp_dir("go_upmix_sr");
+    let input = dir.join("input.wav");
+    let output = dir.join("upmix.go.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            input.to_str().expect("input path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "hum",
+            "--sample-rate",
+            "44100",
+        ])
+        .output()
+        .expect("render input");
+    assert!(
+        render.status.success(),
+        "render failed: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let go = Command::new(bin())
+        .args([
+            "go",
+            input.to_str().expect("input path"),
+            "--output",
+            output.to_str().expect("output path"),
+            "--upmix",
+            "5.1",
+            "--type",
+            "punish",
+        ])
+        .output()
+        .expect("go output");
+    assert!(
+        go.status.success(),
+        "go failed: {}",
+        String::from_utf8_lossy(&go.stderr)
+    );
+
+    let reader = WavReader::open(&output).expect("go wav");
+    let spec = reader.spec();
+    assert_eq!(spec.channels, 6);
+    assert_eq!(spec.sample_rate, 192_000);
+}
+
+#[test]
+fn chain_supports_builtin_preset() {
+    let dir = temp_dir("chain_preset");
+    let output = dir.join("preset_chain.wav");
+
+    let out = Command::new(bin())
+        .args([
+            "chain",
+            "--preset",
+            "ps1_grit",
+            "--duration",
+            "0.1",
+            "--output",
+            output.to_str().expect("output path"),
+        ])
+        .output()
+        .expect("chain preset");
+    assert!(
+        out.status.success(),
+        "chain preset failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(output.exists());
+}
+
+#[test]
+fn presets_support_chain_family_and_versioned_contours() {
+    let list = Command::new(bin())
+        .args(["presets", "--kind", "chain"])
+        .output()
+        .expect("chain preset list");
+    assert!(list.status.success(), "chain preset list failed");
+    let stdout = String::from_utf8_lossy(&list.stdout);
+    assert!(
+        stdout.contains("ps1_grit"),
+        "stdout was:
+{stdout}"
+    );
+
+    let show = Command::new(bin())
+        .args(["presets", "--show", "01_linear_curve_01", "--json"])
+        .output()
+        .expect("contour show");
+    assert!(show.status.success(), "contour show failed");
+    let stdout = String::from_utf8_lossy(&show.stdout);
+    assert!(
+        stdout.contains("\"version\": 1"),
+        "stdout was:
+{stdout}"
+    );
+}
+
+#[test]
+fn render_can_force_streaming_path_for_regression_coverage() {
+    let dir = temp_dir("streaming");
+    let wav = dir.join("streaming.wav");
+
+    let out = Command::new(bin())
+        .env("USG_STREAM_THRESHOLD_FRAMES", "64")
+        .args([
+            "render",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "glitch",
+            "--sample-rate",
+            "44100",
+        ])
+        .output()
+        .expect("streaming render");
+    assert!(
+        out.status.success(),
+        "streaming render failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(wav.exists());
+}

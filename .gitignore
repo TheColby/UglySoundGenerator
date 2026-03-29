@@ -1,2 +1,6 @@
 /target
 /out
+*.wav
+!examples/
+!examples/audio/
+!examples/audio/*.wav

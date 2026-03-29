@@ -18,6 +18,14 @@ const EPS64: f64 = 1e-12;
 const BARK_BANDS: usize = 24;
 const MAX_RENDER_DURATION_S: f64 = 86_400.0;
 const STREAM_RENDER_THRESHOLD_FRAMES: u64 = 192_000 * 120;
+
+fn stream_render_threshold_frames() -> u64 {
+    std::env::var("USG_STREAM_THRESHOLD_FRAMES")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(STREAM_RENDER_THRESHOLD_FRAMES)
+}
 const STREAM_CHUNK_FRAMES: usize = 262_144;
 pub const DEFAULT_GPU_DRIVE: f64 = 1.35;
 pub const DEFAULT_GPU_CRUSH_BITS: f64 = 8.0;
@@ -960,7 +968,7 @@ pub fn render_to_wav_with_engine(
     let frames_usize = usize::try_from(total_frames)
         .map_err(|_| anyhow!("requested render is too large for this platform"))?;
 
-    if total_frames > STREAM_RENDER_THRESHOLD_FRAMES {
+    if total_frames > stream_render_threshold_frames() {
         render_to_wav_streaming(output, opts, &plan, seed, total_frames)?;
     } else {
         let mut samples = render_samples_with_plan(
@@ -1427,7 +1435,7 @@ pub fn render_chain_to_wav_with_engine(
     let frames = usize::try_from(total_frames)
         .map_err(|_| anyhow!("requested chain render is too large for this platform"))?;
 
-    if total_frames > STREAM_RENDER_THRESHOLD_FRAMES {
+    if total_frames > stream_render_threshold_frames() {
         render_chain_to_wav_streaming(
             output,
             stages,

@@ -1610,6 +1610,8 @@ fn styles() -> Result<()> {
 fn backends() -> Result<()> {
     let caps = backend_capabilities();
     let effective = engine_from_backend(RenderBackend::Auto, default_jobs(), None, None, None);
+    let cuda_disabled = std::env::var_os("USG_DISABLE_CUDA").is_some();
+
     println!("CPU:   available");
     println!(
         "Metal: {}",
@@ -1633,6 +1635,32 @@ fn backends() -> Result<()> {
         effective.gpu_drive, effective.gpu_crush_bits, effective.gpu_crush_mix
     );
     println!("GPU post-FX env vars: USG_GPU_DRIVE, USG_GPU_CRUSH_BITS, USG_GPU_CRUSH_MIX");
+    println!(
+        "Metal detail: feature_built={}, target_os_macos={}, runtime_available={}",
+        cfg!(feature = "metal"),
+        cfg!(target_os = "macos"),
+        caps.metal
+    );
+    println!(
+        "CUDA detail: feature_built={}, disabled_by_env={}, runtime_available={}",
+        cfg!(feature = "cuda"),
+        cuda_disabled,
+        caps.cuda
+    );
+    if !cfg!(feature = "metal") {
+        println!("Metal note: rebuild with --features metal to enable Metal acceleration.");
+    } else if !cfg!(target_os = "macos") {
+        println!("Metal note: Metal rendering is only supported on macOS targets.");
+    } else if !caps.metal {
+        println!("Metal note: no usable Metal device/runtime was detected.");
+    }
+    if cuda_disabled {
+        println!("CUDA note: USG_DISABLE_CUDA is set, so CUDA was intentionally disabled.");
+    } else if !cfg!(feature = "cuda") {
+        println!("CUDA note: rebuild with --features cuda to enable CUDA acceleration.");
+    } else if !caps.cuda {
+        println!("CUDA note: a CUDA-capable runtime/device was not detected at startup.");
+    }
     Ok(())
 }
 
