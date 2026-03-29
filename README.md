@@ -27,8 +27,32 @@ Render policy (v-next):
 - `usg styles`: List available ugliness style profiles.
 - `usg backends`: Show CPU/Metal/CUDA backend availability.
 - `usg benchmark`: Compare backend render throughput and optionally export JSON/CSV.
-- `usg presets`: List and inspect built-in ugliness contour presets.
+- `usg presets`: List and inspect built-in contour and chain presets.
 - `usg marathon`: Bulk-generate large ugly sound libraries.
+
+### Command Map
+
+```mermaid
+flowchart LR
+  cli["usg"] --> render["render"]
+  cli --> analyze["analyze"]
+  cli --> pack["render-pack"]
+  cli --> speech["speech"]
+  cli --> go["go"]
+  cli --> chain["chain"]
+  cli --> presets["presets"]
+  cli --> styles["styles"]
+  cli --> bench["benchmark"]
+  cli --> marathon["marathon"]
+
+  render --> wav1["ugly WAV"]
+  speech --> wav2["chip-speech WAV"]
+  chain --> wav3["staged WAV"]
+  go --> wav4["re-uglified WAV"]
+  analyze --> report["text or JSON report"]
+  pack --> ranking["pack summary + ranking"]
+  presets --> contour["contours + chain presets"]
+```
 
 ## Quick Start
 
@@ -233,7 +257,8 @@ Contour JSON schema:
 
 Contour preset library:
 
-- 33 ready presets are included in `presets/go_contours/`
+- 33 ready contour presets are included in `presets/go_contours/`
+- 11 chain presets are included in `presets/chains/`
 - open [presets/go_contours/README.md](/Users/cleider/dev/UglySoundGenerator/presets/go_contours/README.md) for usage
 
 Examples:
@@ -262,6 +287,20 @@ cargo run -- go clean.wav --type punish --level-contour ../presets/go_contours/0
 ## Chiptune Speech
 
 `usg speech` is the start of the next local subversion focus: text-to-chiptune speech synthesis modeled after classic speech-chip eras.
+
+### Speech Pipeline
+
+```mermaid
+flowchart LR
+  text["text or text-file"] --> mode["input-mode splitter"]
+  mode --> units["characters / words / sentences / paragraphs"]
+  units --> params["symbol timing + pitch + emphasis"]
+  params --> osc["primary + secondary + tertiary oscillators"]
+  osc --> chip["chip voice model<br/>formants / buzz / hiss / consonant noise"]
+  chip --> fx["chip FX<br/>bitcrush / sample-hold / fold / chaos / robotize / drift"]
+  fx --> norm["gain + optional normalize"]
+  norm --> wav["speech WAV"]
+```
 
 Current speech-chip-inspired profiles:
 
@@ -301,6 +340,19 @@ cargo run -- speech --output out/maximal_speech.wav --text "UGLY SOUND GENERATOR
 ## Analyze Output
 
 `usg analyze` reports:
+
+### Analysis Pipeline
+
+```mermaid
+flowchart LR
+  wav["input WAV"] --> mono["mono mixdown / stereo pair handling"]
+  mono --> basic["basic metrics<br/>peak / RMS / crest / clipping / ZCR / harshness"]
+  mono --> stft["STFT"]
+  stft --> psycho["psycho model<br/>roughness / sharpness / dissonance / transient / harmonicity"]
+  basic --> score["ugly index"]
+  psycho --> score
+  score --> out["terminal report or JSON"]
+```
 
 - Peak and RMS level
 - Crest factor
@@ -351,10 +403,24 @@ Notes for chain stage parsing:
 
 `usg chain` lets you compose synthesis and effect stages in order.
 
+### Chain And Go Signal Flow
+
+```mermaid
+flowchart LR
+  synth["style render"] --> chainbuf["working buffer"]
+  input["input WAV"] --> gofx["go flavor + contour"]
+  gofx --> chainbuf
+  chainbuf --> stages["ordered stages<br/>styles + effects + presets"]
+  stages --> backend["cpu / metal / cuda post-FX plan"]
+  backend --> finish["gain + normalize + encode"]
+  finish --> out["output WAV"]
+```
+
 Example from your workflow:
 
 ```bash
 cargo run -- chain --stages glitch,stutter,pop --output out/glitch_stutter_pop.wav --play
+cargo run -- chain --preset ps1_grit --output out/ps1_grit.wav
 cargo run -- chain --stages style:hum,dissonance-ring,dissonance-expand --output out/paper_dissonancizer.wav --duration 6
 ```
 
@@ -383,6 +449,20 @@ Two chain/go processes are now modeled after Hoffman and Cook's DAFx-08 paper on
 
 - `dissonance-ring`: splits the signal into third-octave-ish bands and ring-modulates each band near the Kameoka-Kuriyagawa maximum-roughness spacing.
 - `dissonance-expand`: splits the signal into Bark-like bands and exaggerates fast amplitude modulation while re-normalizing slower dynamics.
+
+```mermaid
+flowchart LR
+  x["input signal"] --> fb["subband filterbank"]
+
+  fb --> ringbands["third-octave-ish bands"]
+  ringbands --> ringmod["per-band ring modulation<br/>m = 0.5 * max-roughness spacing"]
+  ringmod --> ringsum["remix to output"]
+
+  fb --> barkbands["Bark-like bands"]
+  barkbands --> env["fast + slow envelope followers"]
+  env --> expand["spectral dynamics expansion<br/>fast beating emphasized, slow level re-normalized"]
+  expand --> expsum["remix to output"]
+```
 
 Examples:
 
