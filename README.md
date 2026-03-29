@@ -920,7 +920,7 @@ Ugliness, aesthetic negativity, and ugliness in music:
 
 Colby Leider and adjacent project-specific references:
 
-- Leider, C. (2007). *Dissonance Theory of Sound Objects*. PhD dissertation, Princeton University. This is the most directly project-adjacent reference for the present repo because it connects dissonance theory to sound objects rather than only interval/chord judgment. [Referenced in DAFx-08 bibliography](https://soundlab.cs.princeton.edu/publications/diss_dafx2008.pdf) | [University of Miami note on degree/dissertation](https://news.miami.edu/frost/_assets/pdf/the-score/2007SCORE.pdf)
+- Leider, C. (2007). *Dissonance Theory of Sound Objects*. PhD dissertation, Princeton University. This is the most directly project-adjacent reference for the present repo because it connects dissonance theory to sound objects rather than only interval/chord judgment. [Referenced in DAFx-08 bibliography](https://soundlab.cs.princeton.edu/publications/diss_dafx2008.pdf)
 - Leider’s current biography and selected-writings page is also useful as a lightweight attribution source tying the dissertation title to Colby Leider’s broader research identity in DSP, sound synthesis, and tuning systems. [Colby Leider Acoustics](https://leider.org/about)
 
 Working synthesis for this repo:
