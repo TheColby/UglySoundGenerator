@@ -568,7 +568,7 @@ Let \(x[n]\) be the mono waveform, \(N\) samples total:
 ```math
 \mathrm{zero\_cross\_rate}
 =
-\frac{1}{N}\sum_{n=1}^{N-1}\mathbf{1}\{\operatorname{sign}(x[n]) \ne \operatorname{sign}(x[n-1])\}
+\frac{1}{N}\sum_{n=1}^{N-1}\mathbf{1}\{\mathrm{sign}(x[n]) \ne \mathrm{sign}(x[n-1])\}
 ```
 
 ```math
@@ -583,7 +583,7 @@ Let \(x[n]\) be the mono waveform, \(N\) samples total:
 ```math
 \mathrm{ugly\_index}
 =
-\operatorname{clamp}\!\left(
+\mathrm{clamp}\!\left(
 10\left(1.6\,\mathrm{clipped\_pct}
 +45\,\mathrm{harshness\_ratio}
 +200\,\mathrm{zero\_cross\_rate}\right),
@@ -655,7 +655,7 @@ The deeper research target remains critical-band analysis:
 
 1. Time-frequency analysis:
    ```math
-   X(k,m)=\operatorname{STFT}\{x[n]\}
+   X(k,m)=\mathrm{STFT}\{x[n]\}
    ```
 2. Bark-band energy:
    ```math
