@@ -1,7 +1,7 @@
 # UglySoundGenerator (usg)
 
 <p align="center">
-  <img src="assets/usg-logo.svg" alt="usg glitch logo" width="760">
+  <img src="assets/usg-logo.svg" alt="usg glitch logo" width="380">
 </p>
 
 `usg` is a Rust command-line tool for creating and inspecting intentionally ugly sounds.
