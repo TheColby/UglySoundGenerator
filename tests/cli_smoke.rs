@@ -469,6 +469,38 @@ fn render_can_force_streaming_path_for_regression_coverage() {
 }
 
 #[test]
+fn speech_pack_renders_all_profiles_and_writes_outputs() {
+    let dir = temp_dir("speech_pack");
+
+    let out = Command::new(bin())
+        .args([
+            "speech-pack",
+            "--out-dir",
+            dir.to_str().expect("dir path"),
+            "--text",
+            "CHIP",
+            "--sample-rate",
+            "22050",
+        ])
+        .output()
+        .expect("speech-pack command");
+    assert!(
+        out.status.success(),
+        "speech-pack failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("/1000"), "stdout was:\n{stdout}");
+    assert!(dir.join("summary.json").exists(), "summary.json missing");
+    assert!(dir.join("ranking.csv").exists(), "ranking.csv missing");
+    assert!(dir.join("report.html").exists(), "report.html missing");
+
+    let csv = fs::read_to_string(dir.join("ranking.csv")).expect("csv");
+    assert!(csv.contains("rank,profile,"), "csv header wrong:\n{csv}");
+}
+
+#[test]
 fn go_accepts_zero_level_in_contour_json() {
     let dir = temp_dir("contour_zero");
     let input = dir.join("input.wav");

@@ -22,6 +22,7 @@ Render policy (v-next):
 - `usg analyze`: Analyze a WAV file and report ugliness metrics.
 - `usg render-pack`: Render all styles + analyze + rank ugliness.
 - `usg speech`: Render chiptune speech from inline text or text files.
+- `usg speech-pack`: Render all 8 chip profiles for the same text, analyze each, and write a ranked summary.
 - `usg go`: Force any input WAV to a target ugliness level (`1..1000`).
 - `usg chain`: Chain synthesis/effects stages into one output file.
 - `usg styles`: List available ugliness style profiles.
@@ -345,6 +346,31 @@ Example "maximal nonsense" render:
 ```bash
 cargo run -- speech --output out/maximal_speech.wav --text "UGLY SOUND GENERATOR NOW SPEAKS IN FRACTALS." --profile handheld-lcd --primary-osc phoneme --secondary-osc koch --tertiary-osc strange --pitch-hz 132 --pitch-jitter 0.12 --vibrato-hz 6.5 --vibrato-depth 0.08 --formant-shift 1.2 --consonant-noise 0.9 --buzz 0.45 --fold 3.8 --chaos 0.8 --robotize 0.55 --bitcrush-bits 5.5 --sample-hold-hz 6800 --drift 0.12 --resampler-grit 0.7
 ```
+
+## Speech Pack
+
+`usg speech-pack` renders all 8 chip profiles for the same text, analyzes each, and produces a ranked report:
+
+```bash
+cargo run -- speech-pack --text "UGLY SOUND GENERATOR" --out-dir out/speech_pack
+cargo run -- speech-pack --text-file speech.txt --out-dir out/speech_pack --model psycho
+```
+
+Outputs per run:
+
+- `<out-dir>/<N>_<profile>.wav` — one file per chip profile
+- `<out-dir>/summary.json` — full analysis data for each profile
+- `<out-dir>/ranking.csv` — profiles ranked by ugliness score
+- `<out-dir>/report.html` — listenable HTML report with audio players
+
+Key flags:
+
+- `--text` / `--text-file`: text to synthesize across all profiles
+- `--input-mode`: `auto`, `character`, `word`, `sentence`, `paragraph`
+- `--pitch-hz`: base pitch in Hz
+- `--model`: analysis model (`basic` or `psycho`, default `psycho`)
+- `--top <N>`: how many top ugliest entries to print (default 5)
+- `--sample-rate`, `--backend`, `--jobs`: standard render controls
 
 ## Analyze Output
 

@@ -39,6 +39,8 @@ enum Command {
     Speech(SpeechArgs),
     /// Analyze a WAV file and report ugliness metrics.
     Analyze(AnalyzeArgs),
+    /// Render every speech-chip profile for the same text, analyze each, and write a ranked summary.
+    SpeechPack(SpeechPackArgs),
     /// Render every style, analyze each output, and write a pack summary.
     RenderPack(RenderPackArgs),
     /// Take an input file and force it to a target ugliness level.
@@ -319,6 +321,100 @@ struct SpeechArgs {
     /// Try to play the output file after rendering.
     #[arg(long)]
     play: bool,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct SpeechPackArgs {
+    /// Directory to write the rendered WAV files and summary.
+    #[arg(long, default_value = "out/speech_pack")]
+    out_dir: PathBuf,
+
+    /// Output summary JSON file path (default: <out-dir>/summary.json).
+    #[arg(long)]
+    summary: Option<PathBuf>,
+
+    /// Output CSV ranking path (default: <out-dir>/ranking.csv).
+    #[arg(long)]
+    csv: Option<PathBuf>,
+
+    /// Output HTML report path (default: <out-dir>/report.html).
+    #[arg(long)]
+    html: Option<PathBuf>,
+
+    /// Inline text to synthesize across all profiles.
+    #[arg(
+        long,
+        conflicts_with = "text_file",
+        default_value = "UGLY SOUND GENERATOR"
+    )]
+    text: Option<String>,
+
+    /// Read text from a UTF-8 file instead of --text.
+    #[arg(long, conflicts_with = "text")]
+    text_file: Option<PathBuf>,
+
+    /// Input mode for text segmentation.
+    #[arg(long, value_enum, default_value_t = SpeechInputModeArg::Auto)]
+    input_mode: SpeechInputModeArg,
+
+    /// Output sample rate in Hz.
+    #[arg(short = 'r', long, default_value_t = 192_000)]
+    sample_rate: u32,
+
+    #[command(flatten)]
+    output_format: OutputFormatArgs,
+
+    /// Optional seed for repeatable renders.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Base pitch in Hz.
+    #[arg(long, default_value_t = 118.0)]
+    pitch_hz: f64,
+
+    /// Normalize peak to this dBFS target.
+    #[arg(long, default_value_t = -0.6)]
+    normalize_dbfs: f64,
+
+    /// Disable normalization.
+    #[arg(long)]
+    no_normalize: bool,
+
+    /// Analysis model for pack scoring.
+    #[arg(long, value_enum, default_value_t = AnalyzeModelArg::Psycho)]
+    model: AnalyzeModelArg,
+
+    /// FFT size used by psycho model.
+    #[arg(long, default_value_t = 2048)]
+    fft_size: usize,
+
+    /// Hop size used by psycho model.
+    #[arg(long, default_value_t = 512)]
+    hop_size: usize,
+
+    /// Number of top ugliest entries to print.
+    #[arg(long, default_value_t = 5)]
+    top: usize,
+
+    /// Rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
+    backend: RenderBackendArg,
+
+    /// Parallel worker count (0 = auto).
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+
+    /// GPU post-FX drive.
+    #[arg(long)]
+    gpu_drive: Option<f64>,
+
+    /// GPU post-FX bitcrush depth in bits.
+    #[arg(long)]
+    gpu_crush_bits: Option<f64>,
+
+    /// GPU post-FX blend between dry and crushed signal (0..1).
+    #[arg(long)]
+    gpu_crush_mix: Option<f64>,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -984,6 +1080,7 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Render(args) => render(args),
         Command::Speech(args) => speech(args),
+        Command::SpeechPack(args) => speech_pack(args),
         Command::Analyze(args) => analyze(args),
         Command::RenderPack(args) => render_pack(args),
         Command::Go(args) => go(args),
@@ -1263,6 +1360,40 @@ fn default_chain_preset_version() -> u16 {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct SpeechPackEntry {
+    profile: String,
+    seed: u64,
+    output: String,
+    ugly_index: f64,
+    analysis: AnalysisReport,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SpeechPackRankingEntry {
+    rank: usize,
+    profile: String,
+    output: String,
+    ugly_index: f64,
+    basic_ugly_index: f64,
+    seed: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SpeechPackSummary {
+    generated_unix_s: u64,
+    model: String,
+    text: String,
+    sample_rate_hz: u32,
+    backend_requested: String,
+    backend_active: String,
+    jobs: usize,
+    base_seed: u64,
+    profiles_rendered: usize,
+    entries: Vec<SpeechPackEntry>,
+    ranking: Vec<SpeechPackRankingEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct PackEntry {
     style: String,
     seed: u64,
@@ -1325,6 +1456,151 @@ struct MarathonManifest {
     max_duration_s: f64,
     styles: Vec<String>,
     entries: Vec<MarathonEntry>,
+}
+
+fn speech_pack(args: SpeechPackArgs) -> Result<()> {
+    let output_encoding = args.output_format.output_encoding()?;
+    let text = if let Some(path) = args.text_file {
+        fs::read_to_string(&path)
+            .with_context(|| format!("failed to read text file {}", path.display()))?
+    } else {
+        args.text
+            .unwrap_or_else(|| "UGLY SOUND GENERATOR".to_string())
+    };
+    let analyze_options = AnalyzeOptions {
+        model: args.model.into(),
+        fft_size: args.fft_size,
+        hop_size: args.hop_size,
+        joke: false,
+    };
+    let engine = engine_from_args(
+        args.backend,
+        args.jobs,
+        args.gpu_drive,
+        args.gpu_crush_bits,
+        args.gpu_crush_mix,
+    );
+    let plan = resolve_backend_plan(&engine)?;
+    fs::create_dir_all(&args.out_dir)
+        .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
+
+    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let profiles = SpeechChipProfile::ALL;
+    let tasks: Vec<(usize, SpeechChipProfile)> = profiles.iter().copied().enumerate().collect();
+
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(plan.jobs)
+        .build()
+        .context("failed to build speech-pack worker pool")?;
+
+    let rendered: Vec<Result<(usize, SpeechPackEntry)>> = pool.install(|| {
+        tasks
+            .par_iter()
+            .map(|(idx, profile)| {
+                let seed = style_seed(base_seed, *idx as u64);
+                let output = args
+                    .out_dir
+                    .join(format!("{:02}_{}.wav", *idx + 1, profile.as_str()));
+                let opts = SpeechRenderOptions {
+                    text: text.clone(),
+                    input_mode: args.input_mode.into(),
+                    sample_rate: args.sample_rate,
+                    seed: Some(seed),
+                    chip_profile: *profile,
+                    pitch_hz: args.pitch_hz,
+                    normalize: !args.no_normalize,
+                    normalize_dbfs: args.normalize_dbfs,
+                    output_encoding,
+                    ..SpeechRenderOptions::default()
+                };
+                render_speech_to_wav_with_engine(&output, &opts, &engine)
+                    .with_context(|| format!("failed to render {}", output.display()))?;
+                let analysis = analyze_wav_with_options(&output, &analyze_options)
+                    .with_context(|| format!("failed to analyze {}", output.display()))?;
+                Ok((
+                    *idx,
+                    SpeechPackEntry {
+                        profile: profile.as_str().to_string(),
+                        seed,
+                        output: output.display().to_string(),
+                        ugly_index: analysis.selected_ugly_index,
+                        analysis,
+                    },
+                ))
+            })
+            .collect()
+    });
+
+    let mut ordered: Vec<(usize, SpeechPackEntry)> = Vec::with_capacity(rendered.len());
+    for entry in rendered {
+        ordered.push(entry?);
+    }
+    ordered.sort_by_key(|(idx, _)| *idx);
+    let entries: Vec<SpeechPackEntry> = ordered.into_iter().map(|(_, e)| e).collect();
+
+    let mut ranked = entries.clone();
+    ranked.sort_by(|a, b| b.ugly_index.total_cmp(&a.ugly_index));
+    let ranking: Vec<SpeechPackRankingEntry> = ranked
+        .iter()
+        .enumerate()
+        .map(|(i, e)| SpeechPackRankingEntry {
+            rank: i + 1,
+            profile: e.profile.clone(),
+            output: e.output.clone(),
+            ugly_index: e.ugly_index,
+            basic_ugly_index: e.analysis.basic.ugly_index,
+            seed: e.seed,
+        })
+        .collect();
+
+    let summary = SpeechPackSummary {
+        generated_unix_s: now_unix_s(),
+        model: analyze_options.model.as_str().to_string(),
+        text: text.chars().take(80).collect(),
+        sample_rate_hz: args.sample_rate,
+        backend_requested: plan.requested.as_str().to_string(),
+        backend_active: plan.active.as_str().to_string(),
+        jobs: plan.jobs,
+        base_seed,
+        profiles_rendered: entries.len(),
+        entries,
+        ranking,
+    };
+
+    let summary_path = args
+        .summary
+        .unwrap_or_else(|| args.out_dir.join("summary.json"));
+    let csv_path = args.csv.unwrap_or_else(|| args.out_dir.join("ranking.csv"));
+    let html_path = args
+        .html
+        .unwrap_or_else(|| args.out_dir.join("report.html"));
+    write_json(&summary_path, &summary)
+        .with_context(|| format!("failed to write {}", summary_path.display()))?;
+    write_speech_pack_csv(&csv_path, &summary)
+        .with_context(|| format!("failed to write {}", csv_path.display()))?;
+    write_speech_pack_html(&html_path, &summary)
+        .with_context(|| format!("failed to write {}", html_path.display()))?;
+
+    println!(
+        "Rendered speech pack: {} profiles -> {} (backend={} -> {}, jobs={})",
+        summary.profiles_rendered,
+        args.out_dir.display(),
+        summary.backend_requested,
+        summary.backend_active,
+        summary.jobs
+    );
+    println!("Text: \"{}\"", summary.text);
+    println!("Summary: {}", summary_path.display());
+    println!("CSV: {}", csv_path.display());
+    println!("HTML: {}", html_path.display());
+    println!("Top ugliest:");
+    for row in summary.ranking.iter().take(args.top.max(1)) {
+        println!(
+            "  {:>2}. {:<14} {:>5.1}/1000 (basic {:>5.1})  {}",
+            row.rank, row.profile, row.ugly_index, row.basic_ugly_index, row.output
+        );
+    }
+    Ok(())
 }
 
 fn render_pack(args: RenderPackArgs) -> Result<()> {
@@ -2619,4 +2895,135 @@ fn file_name_or_path(path: &str) -> &str {
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path)
+}
+
+fn write_speech_pack_csv(path: &Path, summary: &SpeechPackSummary) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+    let mut text = String::new();
+    text.push_str("rank,profile,ugly_index,basic_ugly_index,seed,output\n");
+    for row in &summary.ranking {
+        text.push_str(&format!(
+            "{},{},{:.6},{:.6},{},{}\n",
+            row.rank,
+            csv_escape(&row.profile),
+            row.ugly_index,
+            row.basic_ugly_index,
+            row.seed,
+            csv_escape(&row.output),
+        ));
+    }
+    fs::write(path, text)?;
+    Ok(())
+}
+
+fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    let mut rows = String::new();
+    for row in &summary.ranking {
+        rows.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td><audio controls preload=\"none\" src=\"{}\"></audio></td></tr>\n",
+            row.rank,
+            html_escape(&row.profile),
+            row.ugly_index,
+            row.basic_ugly_index,
+            row.seed,
+            html_escape(file_name_or_path(&row.output)),
+        ));
+    }
+
+    let html = format!(
+        "<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>USG Speech Pack Report</title>
+  <style>
+    :root {{
+      --bg: #0f1116;
+      --panel: #171b25;
+      --text: #e9edf5;
+      --muted: #9aa5bf;
+      --accent: #ff5f45;
+      --line: #2b3345;
+    }}
+    body {{
+      margin: 0;
+      font-family: \"IBM Plex Sans\", \"Avenir Next\", \"Segoe UI\", sans-serif;
+      background: radial-gradient(circle at 20% 0%, #202636 0%, var(--bg) 45%);
+      color: var(--text);
+    }}
+    .wrap {{ max-width: 1000px; margin: 0 auto; padding: 28px 18px 44px; }}
+    .card {{
+      background: linear-gradient(180deg, #1b2130, var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }}
+    h1 {{ margin: 0 0 6px; font-size: 1.5rem; }}
+    p {{ margin: 4px 0; color: var(--muted); }}
+    table {{ width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 10px; }}
+    th, td {{
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: middle;
+      font-size: 0.92rem;
+    }}
+    th {{ color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }}
+    td:nth-child(3) {{ color: var(--accent); font-weight: 700; }}
+    audio {{ width: 220px; height: 30px; }}
+  </style>
+</head>
+<body>
+  <div class=\"wrap\">
+    <div class=\"card\">
+      <h1>UglySoundGenerator Speech Pack Report</h1>
+      <p>Text: &ldquo;{text}&rdquo;</p>
+      <p>Model: {model} | Profiles: {profiles_rendered} | SR: {sample_rate} Hz</p>
+      <p>Backend: {backend_requested} -&gt; {backend_active} | Jobs: {jobs}</p>
+      <p>Base seed: {base_seed}</p>
+    </div>
+    <div class=\"card\">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Profile</th>
+            <th>Ugliness</th>
+            <th>Basic</th>
+            <th>Seed</th>
+            <th>Listen</th>
+          </tr>
+        </thead>
+        <tbody>
+{rows}        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>",
+        text = html_escape(&summary.text),
+        model = html_escape(&summary.model),
+        profiles_rendered = summary.profiles_rendered,
+        sample_rate = summary.sample_rate_hz,
+        backend_requested = html_escape(&summary.backend_requested),
+        backend_active = html_escape(&summary.backend_active),
+        jobs = summary.jobs,
+        base_seed = summary.base_seed,
+        rows = rows
+    );
+
+    fs::write(path, html)?;
+    Ok(())
 }
