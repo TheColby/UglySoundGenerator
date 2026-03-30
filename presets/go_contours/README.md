@@ -2,6 +2,8 @@
 
 This folder contains 33 JSON presets for `usg go --level-contour ...`.
 
+Each preset is versioned and currently uses `"version": 1`. The CLI rejects unsupported contour versions instead of silently guessing.
+
 Preset groups:
 
 - `01..11`: `linear_curve_*` (smooth ramps and bends)
@@ -17,5 +19,5 @@ cargo run -- go out/clean.wav --type punish --level-contour presets/go_contours/
 Inline JSON still works:
 
 ```bash
-cargo run -- go out/clean.wav --type glitch --level-contour-json '{"interpolation":"linear","points":[{"t":0.0,"level":100},{"t":0.5,"level":900},{"t":1.0,"level":250}]}' --output out/clean_inline.go.wav
+cargo run -- go out/clean.wav --type glitch --level-contour-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"level":100},{"t":0.5,"level":900},{"t":1.0,"level":250}]}' --output out/clean_inline.go.wav
 ```

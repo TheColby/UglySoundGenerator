@@ -48,6 +48,38 @@ fn analyze_reports_scores_as_out_of_1000() {
 }
 
 #[test]
+fn analyze_supports_joke_mode() {
+    let dir = temp_dir("analyze_joke");
+    let wav = dir.join("input.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "punish",
+        ])
+        .output()
+        .expect("render command");
+    assert!(render.status.success(), "render failed");
+
+    let analyze = Command::new(bin())
+        .args(["analyze", wav.to_str().expect("wav path"), "--joke"])
+        .output()
+        .expect("analyze joke command");
+    assert!(analyze.status.success(), "analyze --joke failed");
+    let stdout = String::from_utf8_lossy(&analyze.stdout);
+    assert!(
+        stdout.contains("joke.uglierbasis_index"),
+        "stdout was:\n{stdout}"
+    );
+    assert!(stdout.contains("joke.verdict"), "stdout was:\n{stdout}");
+}
+
+#[test]
 fn render_pack_reports_scores_as_out_of_1000() {
     let dir = temp_dir("pack");
     let pack = dir.join("pack");
@@ -92,6 +124,8 @@ fn backends_reports_gpu_post_fx_defaults() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("GPU post-FX defaults"));
     assert!(stdout.contains("USG_GPU_DRIVE"));
+    assert!(stdout.contains("Metal probe"));
+    assert!(stdout.contains("CUDA probe"));
 }
 
 #[test]
@@ -226,6 +260,34 @@ fn speech_command_renders_text_to_wav() {
     let spec = reader.spec();
     assert_eq!(spec.channels, 1);
     assert!(reader.duration() > 1_000);
+}
+
+#[test]
+fn speech_defaults_to_192khz_float32_output() {
+    let dir = temp_dir("speech_defaults");
+    let wav = dir.join("speech_defaults.wav");
+
+    let out = Command::new(bin())
+        .args([
+            "speech",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--text",
+            "UGLY DEFAULT CHECK",
+        ])
+        .output()
+        .expect("speech command");
+    assert!(
+        out.status.success(),
+        "speech failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let reader = WavReader::open(&wav).expect("speech wav");
+    let spec = reader.spec();
+    assert_eq!(spec.sample_rate, 192_000);
+    assert_eq!(spec.sample_format, SampleFormat::Float);
+    assert_eq!(spec.bits_per_sample, 32);
 }
 
 #[test]
@@ -404,4 +466,49 @@ fn render_can_force_streaming_path_for_regression_coverage() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(wav.exists());
+}
+
+#[test]
+fn go_accepts_zero_level_in_contour_json() {
+    let dir = temp_dir("contour_zero");
+    let input = dir.join("input.wav");
+    let output = dir.join("output.go.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            input.to_str().expect("input path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "hum",
+        ])
+        .output()
+        .expect("render input");
+    assert!(
+        render.status.success(),
+        "render failed: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let go = Command::new(bin())
+        .args([
+            "go",
+            input.to_str().expect("input path"),
+            "--output",
+            output.to_str().expect("output path"),
+            "--type",
+            "glitch",
+            "--level-contour-json",
+            "{\"version\":1,\"interpolation\":\"linear\",\"points\":[{\"t\":0.0,\"level\":0},{\"t\":1.0,\"level\":900}]}",
+        ])
+        .output()
+        .expect("go contour");
+    assert!(
+        go.status.success(),
+        "go failed: {}",
+        String::from_utf8_lossy(&go.stderr)
+    );
+    assert!(output.exists());
 }

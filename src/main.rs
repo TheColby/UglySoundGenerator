@@ -14,7 +14,7 @@ use usg::{
     RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile, SpeechInputMode,
     SpeechOscillator, SpeechRenderOptions, Style, SurroundLayout, Trajectory, UglinessContour,
     analyze_wav_with_options, available_effects, available_styles, backend_capabilities,
-    default_jobs, go_ugly_file_with_engine_contour_encoding,
+    backend_status_report, default_jobs, go_ugly_file_with_engine_contour_encoding,
     go_ugly_upmix_file_with_engine_contour_encoding, parse_chain_stage, point_to_xyz,
     render_chain_to_wav_with_engine, render_speech_to_wav_with_engine, render_to_wav_with_engine,
     resolve_backend_plan,
@@ -150,7 +150,7 @@ struct SpeechArgs {
     tertiary_osc: SpeechOscillatorArg,
 
     /// Output sample rate in Hz.
-    #[arg(short = 'r', long, default_value_t = 44_100)]
+    #[arg(short = 'r', long, default_value_t = 192_000)]
     sample_rate: u32,
 
     #[command(flatten)]
@@ -341,6 +341,10 @@ struct AnalyzeArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
+
+    /// Also compute the joke UglierBasis score and breakdown.
+    #[arg(long)]
+    joke: bool,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -1129,6 +1133,7 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
         model: args.model.into(),
         fft_size: args.fft_size,
         hop_size: args.hop_size,
+        joke: args.joke,
     };
     let report = analyze_wav_with_options(&args.input, &options)
         .with_context(|| format!("failed to analyze {}", args.input.display()))?;
@@ -1179,6 +1184,25 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
         println!("psycho.weighted_sum: {:.3}", psycho.weighted_sum);
         println!("psycho_fft_size: {}", psycho.fft_size);
         println!("psycho_hop_size: {}", psycho.hop_size);
+    }
+
+    if let Some(joke) = &report.joke {
+        println!("joke.uglierbasis_index: {:.1}/1000", joke.uglierbasis_index);
+        println!("joke.verdict: {}", joke.verdict);
+        println!(
+            "joke.academic_cluster_norm: {:.3}",
+            joke.academic_cluster_norm
+        );
+        println!(
+            "joke.bureaucratic_overhead_norm: {:.3}",
+            joke.bureaucratic_overhead_norm
+        );
+        println!("joke.all_high_bonus_norm: {:.3}", joke.all_high_bonus_norm);
+        println!(
+            "joke.harmonicity_relief_norm: {:.3}",
+            joke.harmonicity_relief_norm
+        );
+        println!("joke.weighted_sum: {:.3}", joke.weighted_sum);
     }
 
     println!("ugly_index: {:.1}/1000", report.selected_ugly_index);
@@ -1309,6 +1333,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
         model: args.model.into(),
         fft_size: args.fft_size,
         hop_size: args.hop_size,
+        joke: false,
     };
     let engine = engine_from_args(
         args.backend,
@@ -1609,10 +1634,18 @@ fn styles() -> Result<()> {
 
 fn backends() -> Result<()> {
     let caps = backend_capabilities();
+    let status = backend_status_report();
     let effective = engine_from_backend(RenderBackend::Auto, default_jobs(), None, None, None);
     let cuda_disabled = std::env::var_os("USG_DISABLE_CUDA").is_some();
 
-    println!("CPU:   available");
+    println!(
+        "CPU:   {}",
+        if status.cpu.available {
+            "available"
+        } else {
+            "not available"
+        }
+    );
     println!(
         "Metal: {}",
         if caps.metal {
@@ -1635,18 +1668,21 @@ fn backends() -> Result<()> {
         effective.gpu_drive, effective.gpu_crush_bits, effective.gpu_crush_mix
     );
     println!("GPU post-FX env vars: USG_GPU_DRIVE, USG_GPU_CRUSH_BITS, USG_GPU_CRUSH_MIX");
+    println!("CPU detail: {}", status.cpu.detail);
     println!(
         "Metal detail: feature_built={}, target_os_macos={}, runtime_available={}",
         cfg!(feature = "metal"),
         cfg!(target_os = "macos"),
         caps.metal
     );
+    println!("Metal probe: {}", status.metal.detail);
     println!(
         "CUDA detail: feature_built={}, disabled_by_env={}, runtime_available={}",
         cfg!(feature = "cuda"),
         cuda_disabled,
         caps.cuda
     );
+    println!("CUDA probe: {}", status.cuda.detail);
     if !cfg!(feature = "metal") {
         println!("Metal note: rebuild with --features metal to enable Metal acceleration.");
     } else if !cfg!(target_os = "macos") {

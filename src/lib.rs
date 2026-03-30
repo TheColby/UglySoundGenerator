@@ -530,6 +530,19 @@ pub struct BackendCapabilities {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BackendStatus {
+    pub available: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BackendStatusReport {
+    pub cpu: BackendStatus,
+    pub metal: BackendStatus,
+    pub cuda: BackendStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BackendPlan {
     pub requested: RenderBackend,
     pub active: RenderBackend,
@@ -555,6 +568,7 @@ pub struct AnalyzeOptions {
     pub model: AnalyzeModel,
     pub fft_size: usize,
     pub hop_size: usize,
+    pub joke: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -563,6 +577,7 @@ impl Default for AnalyzeOptions {
             model: AnalyzeModel::Basic,
             fft_size: 2048,
             hop_size: 512,
+            joke: false,
         }
     }
 }
@@ -777,6 +792,44 @@ pub struct AnalysisReport {
     pub basic: Analysis,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub psycho: Option<PsychoAnalysis>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub joke: Option<JokeAnalysis>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct JokeAnalysis {
+    pub uglierbasis_index: f64,
+    pub verdict: String,
+    pub academic_cluster_norm: f64,
+    pub bureaucratic_overhead_norm: f64,
+    pub all_high_bonus_norm: f64,
+    pub harmonicity_relief_norm: f64,
+    pub weighted_sum: f64,
+    pub clip_arrogance: f64,
+    pub roughness: f64,
+    pub sharpness: f64,
+    pub dissonance: f64,
+    pub transient_density: f64,
+    pub harmonicity: f64,
+    pub inharmonicity: f64,
+    pub binaural_beat_pressure: f64,
+    pub beat_conflict: f64,
+    pub wolf_fifth_tension: f64,
+    pub modulation_glare: f64,
+    pub gate_surprise: f64,
+    pub pop_density: f64,
+    pub quantization_shame: f64,
+    pub zipper_noise: f64,
+    pub loudness_lurch: f64,
+    pub overtone_hostility: f64,
+    pub alias_spray: f64,
+    pub envelope_panic: f64,
+    pub notch_cruelty: f64,
+    pub hysteresis_squeal: f64,
+    pub stereo_argument: f64,
+    pub jitter: f64,
+    pub vibrato_malpractice: f64,
+    pub cadence_collapse: f64,
 }
 
 pub fn available_styles() -> &'static [Style] {
@@ -806,6 +859,23 @@ pub fn backend_capabilities() -> BackendCapabilities {
         cpu: true,
         metal: metal_supported(),
         cuda: cuda_supported(),
+    }
+}
+
+pub fn backend_status_report() -> BackendStatusReport {
+    BackendStatusReport {
+        cpu: BackendStatus {
+            available: true,
+            detail: "Always available in this build".to_string(),
+        },
+        metal: BackendStatus {
+            available: metal_supported(),
+            detail: metal_status_detail(),
+        },
+        cuda: BackendStatus {
+            available: cuda_supported(),
+            detail: cuda_status_detail(),
+        },
     }
 }
 
@@ -890,6 +960,20 @@ fn metal_supported() -> bool {
     }
 }
 
+#[cfg(all(feature = "metal", target_os = "macos"))]
+fn metal_status_detail() -> String {
+    backend_metal::availability_detail()
+}
+
+#[cfg(not(all(feature = "metal", target_os = "macos")))]
+fn metal_status_detail() -> String {
+    if !cfg!(feature = "metal") {
+        "Metal feature not built; rebuild with --features metal".to_string()
+    } else {
+        "Metal rendering is only supported on macOS targets".to_string()
+    }
+}
+
 fn cuda_supported() -> bool {
     if std::env::var_os("USG_DISABLE_CUDA").is_some() {
         return false;
@@ -902,6 +986,20 @@ fn cuda_supported() -> bool {
     {
         false
     }
+}
+
+#[cfg(feature = "cuda")]
+fn cuda_status_detail() -> String {
+    if std::env::var_os("USG_DISABLE_CUDA").is_some() {
+        "CUDA disabled by USG_DISABLE_CUDA".to_string()
+    } else {
+        backend_cuda::availability_detail()
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+fn cuda_status_detail() -> String {
+    "CUDA feature not built; rebuild with --features cuda".to_string()
 }
 
 pub fn parse_style_name(name: &str) -> Option<Style> {
@@ -1049,6 +1147,65 @@ pub fn render_samples(
     Ok(synth_ugly(frames, sample_rate, style, gain, &mut rng))
 }
 
+fn try_backend_render_style(
+    frames: usize,
+    sample_rate: f64,
+    style: Style,
+    gain: f64,
+    seed: u64,
+    plan: &BackendPlan,
+) -> Result<Option<Vec<f64>>> {
+    #[cfg(not(any(all(feature = "metal", target_os = "macos"), feature = "cuda")))]
+    let _ = (sample_rate, style, gain, seed);
+
+    if frames < 8_192 || plan.jobs <= 1 {
+        return Ok(None);
+    }
+    match plan.active {
+        RenderBackend::Metal => {
+            #[cfg(all(feature = "metal", target_os = "macos"))]
+            {
+                return backend_metal::render_style(
+                    style,
+                    frames,
+                    sample_rate,
+                    gain,
+                    seed,
+                    plan.gpu_drive,
+                    plan.gpu_crush_bits,
+                    plan.gpu_crush_mix,
+                )
+                .map(Some);
+            }
+            #[cfg(not(all(feature = "metal", target_os = "macos")))]
+            {
+                return Ok(None);
+            }
+        }
+        RenderBackend::Cuda => {
+            #[cfg(feature = "cuda")]
+            {
+                return backend_cuda::render_style(
+                    style,
+                    frames,
+                    sample_rate,
+                    gain,
+                    seed,
+                    plan.gpu_drive,
+                    plan.gpu_crush_bits,
+                    plan.gpu_crush_mix,
+                )
+                .map(Some);
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                return Ok(None);
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
 fn render_samples_with_plan(
     frames: usize,
     sample_rate: f64,
@@ -1057,6 +1214,9 @@ fn render_samples_with_plan(
     seed: u64,
     plan: &BackendPlan,
 ) -> Result<Vec<f64>> {
+    if let Some(samples) = try_backend_render_style(frames, sample_rate, style, gain, seed, plan)? {
+        return Ok(samples);
+    }
     let mut samples = render_samples(frames, sample_rate, style, gain, seed)?;
     apply_backend_post(samples.as_mut_slice(), plan)?;
     Ok(samples)
@@ -1945,12 +2105,21 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
             (psycho.ugly_index, Some(psycho))
         }
     };
+    let joke = if opts.joke {
+        let psycho_for_joke = psycho.clone().unwrap_or_else(|| {
+            analyze_samples_psycho(&mono, sample_rate, &basic, opts, stereo_pair)
+        });
+        Some(compute_joke_analysis(&basic, &psycho_for_joke))
+    } else {
+        None
+    };
 
     Ok(AnalysisReport {
         model: opts.model.as_str().to_string(),
         selected_ugly_index,
         basic,
         psycho,
+        joke,
     })
 }
 
@@ -2087,9 +2256,9 @@ pub fn validate_ugliness_contour(contour: &UglinessContour) -> Result<()> {
                 p.t
             ));
         }
-        if !(1..=1000).contains(&p.level) {
+        if !(0..=1000).contains(&p.level) {
             return Err(anyhow!(
-                "contour point {idx} has invalid level={} (expected 1..=1000)",
+                "contour point {idx} has invalid level={} (expected 0..=1000)",
                 p.level
             ));
         }
@@ -3771,6 +3940,113 @@ fn analyze_samples_psycho(
     }
 }
 
+fn mean_norm(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        0.0
+    } else {
+        finite01(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn compute_joke_analysis(basic: &Analysis, psycho: &PsychoAnalysis) -> JokeAnalysis {
+    let c = psycho.clip_norm;
+    let r = psycho.roughness_norm;
+    let s = psycho.sharpness_norm;
+    let d = psycho.dissonance_norm;
+    let t = psycho.transient_norm;
+    let h = psycho.harmonicity_norm;
+    let i = psycho.inharmonicity_norm;
+    let b = psycho.binaural_beat_norm;
+    let f = psycho.beat_conflict_norm;
+    let w = psycho.wolf_fifth_norm;
+
+    let crest_norm = finite01(basic.crest_factor_db.max(0.0) / 18.0);
+    let harsh_base = finite01(basic.harshness_ratio / 0.4);
+    let m = mean_norm(&[r, f, t]);
+    let g = finite01(0.55 * t + 0.45 * c);
+    let p = finite01(0.7 * t + 0.3 * c);
+    let q = finite01(0.55 * s + 0.45 * c);
+    let z = finite01(0.65 * s + 0.35 * f);
+    let l = finite01(0.55 * t + 0.45 * crest_norm);
+    let o = finite01(0.55 * s + 0.45 * i);
+    let a = finite01(0.5 * s + 0.35 * i + 0.15 * c);
+    let e = finite01(0.6 * t + 0.4 * harsh_base);
+    let n = finite01(0.5 * d + 0.5 * i);
+    let y = finite01(0.5 * r + 0.3 * s + 0.2 * b);
+    let x = finite01(0.65 * b + 0.35 * f);
+    let j = finite01(0.5 * t + 0.5 * f);
+    let v = finite01(0.45 * f + 0.3 * b + 0.25 * r);
+    let k = finite01(0.45 * t + 0.35 * d + 0.2 * i);
+
+    let academic_cluster = mean_norm(&[c, r, s, d, a, z, q]);
+    let bureaucracy = mean_norm(&[t, i, b, f, w, m, g, p, l, o, e, n, y, x, j, v, k]);
+    let all_terms = [
+        c, r, s, d, t, h, i, b, f, w, m, g, p, q, z, l, o, a, e, n, y, x, j, v, k,
+    ];
+    let min_term = all_terms
+        .iter()
+        .copied()
+        .fold(1.0_f64, |acc, value| acc.min(value));
+    let all_mean = mean_norm(&all_terms);
+    let all_high_bonus = finite01(0.55 * min_term + 0.45 * all_mean);
+    let harmonicity_relief = h;
+
+    let weighted_sum = -4.2
+        + 2.6 * academic_cluster
+        + 1.35 * bureaucracy
+        + 2.0 * all_high_bonus
+        + 0.25 * i
+        + 0.2 * c
+        - 0.55 * harmonicity_relief
+        + 0.35 * harmonicity_relief * academic_cluster;
+    let uglierbasis_index = 1000.0 * sigmoid(weighted_sum);
+
+    let verdict = if uglierbasis_index >= 995.0 {
+        "please turn that off"
+    } else if academic_cluster >= 0.78 {
+        "academically ugly"
+    } else if harmonicity_relief >= 0.72 && uglierbasis_index < 500.0 {
+        "briefly spared by harmonicity"
+    } else {
+        "bureaucratically offensive"
+    };
+
+    JokeAnalysis {
+        uglierbasis_index: uglierbasis_index.clamp(0.0, 1000.0),
+        verdict: verdict.to_string(),
+        academic_cluster_norm: academic_cluster,
+        bureaucratic_overhead_norm: bureaucracy,
+        all_high_bonus_norm: all_high_bonus,
+        harmonicity_relief_norm: harmonicity_relief,
+        weighted_sum,
+        clip_arrogance: c,
+        roughness: r,
+        sharpness: s,
+        dissonance: d,
+        transient_density: t,
+        harmonicity: h,
+        inharmonicity: i,
+        binaural_beat_pressure: b,
+        beat_conflict: f,
+        wolf_fifth_tension: w,
+        modulation_glare: m,
+        gate_surprise: g,
+        pop_density: p,
+        quantization_shame: q,
+        zipper_noise: z,
+        loudness_lurch: l,
+        overtone_hostility: o,
+        alias_spray: a,
+        envelope_panic: e,
+        notch_cruelty: n,
+        hysteresis_squeal: y,
+        stereo_argument: x,
+        jitter: j,
+        vibrato_malpractice: v,
+        cadence_collapse: k,
+    }
+}
+
 fn stft_mag_spectra(samples: &[f64], fft_size: usize, hop_size: usize) -> Vec<Vec<f64>> {
     if samples.is_empty() || fft_size == 0 || hop_size == 0 {
         return Vec::new();
@@ -4732,6 +5008,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 1024,
                 hop_size: 256,
+                joke: false,
             },
             None,
         );
@@ -4747,6 +5024,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 1024,
                 hop_size: 256,
+                joke: false,
             },
             None,
         );
@@ -4766,6 +5044,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 1024,
                 hop_size: 256,
+                joke: false,
             },
             None,
         );
@@ -4781,6 +5060,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 1024,
                 hop_size: 256,
+                joke: false,
             },
             None,
         );
@@ -4813,6 +5093,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 1024,
                 hop_size: 256,
+                joke: false,
             },
             None,
         );
@@ -4941,6 +5222,7 @@ mod tests {
                 model: AnalyzeModel::Psycho,
                 fft_size: 2048,
                 hop_size: 512,
+                joke: false,
             },
         )
         .expect("analyze psycho");
@@ -4955,6 +5237,42 @@ mod tests {
         assert!((0.0..=1.0).contains(&psycho.beat_conflict_norm));
         assert!((0.0..=1.0).contains(&psycho.tritone_tension_norm));
         assert!((0.0..=1.0).contains(&psycho.wolf_fifth_norm));
+        let _ = fs::remove_file(out);
+    }
+
+    #[test]
+    fn joke_analysis_returns_bounded_score_and_breakdown() {
+        let out = std::env::temp_dir().join(format!("usg_test_{}_joke.wav", std::process::id()));
+        let opts = RenderOptions {
+            duration: 0.35,
+            sample_rate: 44_100,
+            seed: Some(31337),
+            style: Style::Punish,
+            gain: 0.9,
+            normalize: true,
+            normalize_dbfs: 0.0,
+            output_encoding: OutputEncoding::Float32,
+        };
+        render_to_wav(&out, &opts).expect("render");
+
+        let report = analyze_wav_with_options(
+            &out,
+            &AnalyzeOptions {
+                model: AnalyzeModel::Basic,
+                fft_size: 1024,
+                hop_size: 256,
+                joke: true,
+            },
+        )
+        .expect("analyze joke");
+
+        let joke = report.joke.expect("joke analysis");
+        assert!((0.0..=1000.0).contains(&joke.uglierbasis_index));
+        assert!((0.0..=1.0).contains(&joke.academic_cluster_norm));
+        assert!((0.0..=1.0).contains(&joke.bureaucratic_overhead_norm));
+        assert!((0.0..=1.0).contains(&joke.all_high_bonus_norm));
+        assert!((0.0..=1.0).contains(&joke.harmonicity_relief_norm));
+        assert!(!joke.verdict.is_empty());
         let _ = fs::remove_file(out);
     }
 

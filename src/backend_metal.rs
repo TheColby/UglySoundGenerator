@@ -6,9 +6,205 @@ use std::mem::size_of;
 use anyhow::{Result, anyhow};
 use metal::{CompileOptions, Device, MTLResourceOptions, MTLSize, NSUInteger};
 
+use crate::Style;
+
 const METAL_KERNEL_SRC: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
+
+constant float PI_F = 3.14159265358979323846f;
+
+inline ulong mix64(ulong x) {
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdUL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53UL;
+    x ^= x >> 33;
+    return x;
+}
+
+inline float fract_usg(float x) {
+    return x - floor(x);
+}
+
+inline float saw_usg(float freq, float t) {
+    float phase = fract_usg(freq * t);
+    return 2.0f * phase - 1.0f;
+}
+
+inline float square_usg(float freq, float t) {
+    return fract_usg(freq * t) < 0.5f ? 1.0f : -1.0f;
+}
+
+inline float triangle_usg(float freq, float t) {
+    return fabs(2.0f * fract_usg(freq * t) - 1.0f) * 2.0f - 1.0f;
+}
+
+inline float hash_unit(ulong seed, int idx, ulong salt) {
+    ulong x = mix64(seed ^ ((ulong)(idx + 1) * salt));
+    return ((float)(x & 0x00ffffffUL) / 8388607.5f) - 1.0f;
+}
+
+inline float pulse_env(float t, float rate, ulong seed, ulong salt, float sharpness) {
+    float jitter = 0.5f * (hash_unit(seed, (int)floor(t * rate), salt) + 1.0f);
+    float phase = fract_usg(t * rate + jitter);
+    float env = max(0.0f, 1.0f - phase * sharpness);
+    return env * env;
+}
+
+inline void style_params(uint style_id, thread float& hiss_amp, thread float& click_prob, thread float& click_amp, thread float& glitch_prob, thread float& glitch_amp, thread float& bit_depth, thread float& style_drive) {
+    switch (style_id) {
+        case 0: hiss_amp = 0.22f; click_prob = 0.0015f; click_amp = 1.4f; glitch_prob = 0.0020f; glitch_amp = 0.75f; bit_depth = 6.0f; style_drive = 1.35f; break;
+        case 1: hiss_amp = 0.16f; click_prob = 0.0012f; click_amp = 1.2f; glitch_prob = 0.0015f; glitch_amp = 0.55f; bit_depth = 4.0f; style_drive = 1.3f; break;
+        case 2: hiss_amp = 0.25f; click_prob = 0.0017f; click_amp = 1.5f; glitch_prob = 0.0023f; glitch_amp = 0.9f; bit_depth = 5.0f; style_drive = 1.45f; break;
+        case 3: hiss_amp = 0.09f; click_prob = 0.0030f; click_amp = 1.4f; glitch_prob = 0.0050f; glitch_amp = 1.2f; bit_depth = 3.0f; style_drive = 1.55f; break;
+        case 4: hiss_amp = 0.06f; click_prob = 0.0060f; click_amp = 1.8f; glitch_prob = 0.0010f; glitch_amp = 0.4f; bit_depth = 7.0f; style_drive = 1.25f; break;
+        case 5: hiss_amp = 0.12f; click_prob = 0.0010f; click_amp = 0.9f; glitch_prob = 0.0012f; glitch_amp = 0.5f; bit_depth = 6.0f; style_drive = 1.5f; break;
+        case 6: hiss_amp = 0.18f; click_prob = 0.0015f; click_amp = 0.8f; glitch_prob = 0.0009f; glitch_amp = 0.4f; bit_depth = 6.0f; style_drive = 1.3f; break;
+        case 7: hiss_amp = 0.04f; click_prob = 0.0003f; click_amp = 0.5f; glitch_prob = 0.0005f; glitch_amp = 0.25f; bit_depth = 9.0f; style_drive = 1.1f; break;
+        case 8: hiss_amp = 0.10f; click_prob = 0.0011f; click_amp = 1.1f; glitch_prob = 0.0013f; glitch_amp = 0.55f; bit_depth = 5.0f; style_drive = 1.7f; break;
+        case 9: hiss_amp = 0.08f; click_prob = 0.0038f; click_amp = 1.6f; glitch_prob = 0.0018f; glitch_amp = 0.65f; bit_depth = 6.0f; style_drive = 1.45f; break;
+        case 10:hiss_amp = 0.28f; click_prob = 0.0032f; click_amp = 1.9f; glitch_prob = 0.0038f; glitch_amp = 1.3f; bit_depth = 3.0f; style_drive = 1.95f; break;
+        case 11:hiss_amp = 0.14f; click_prob = 0.0022f; click_amp = 1.2f; glitch_prob = 0.0028f; glitch_amp = 0.95f; bit_depth = 4.0f; style_drive = 1.55f; break;
+        case 12:hiss_amp = 0.07f; click_prob = 0.0010f; click_amp = 0.9f; glitch_prob = 0.0011f; glitch_amp = 0.45f; bit_depth = 7.0f; style_drive = 1.2f; break;
+        case 13:hiss_amp = 0.34f; click_prob = 0.0065f; click_amp = 2.2f; glitch_prob = 0.0072f; glitch_amp = 1.6f; bit_depth = 2.0f; style_drive = 2.35f; break;
+        default:hiss_amp = 0.20f; click_prob = 0.0024f; click_amp = 1.4f; glitch_prob = 0.0027f; glitch_amp = 1.0f; bit_depth = 5.0f; style_drive = 1.5f; break;
+    }
+}
+
+inline float synth_base(uint style_id, int idx, float t, float sample_rate, ulong seed) {
+    float wobble = sin(2.0f * PI_F * 0.27f * t) * 4.0f;
+    float noise = hash_unit(seed, idx, 0x9e3779b97f4a7c15UL);
+    float hold = hash_unit(seed, idx / 128, 0xbf58476d1ce4e5b9UL);
+    float pulse_pop = pulse_env(t, 8.0f, seed, 0x94d049bb133111ebUL, 10.0f);
+    float pulse_spank = pulse_env(t, 13.0f, seed, 0x243f6a8885a308d3UL, 14.0f);
+    int lucky_mode = ((int)(fabs(hash_unit(seed, idx / (int)max(1.0f, sample_rate / 5.0f), 0x123456789abcdef0UL)) * 1000.0f)) % 6;
+
+    switch (style_id) {
+        case 0: {
+            float saw_a = saw_usg(90.0f + wobble + 55.0f * sin(2.0f * PI_F * 1.7f * t), t);
+            float sq_b = square_usg(180.0f + 40.0f * sin(2.0f * PI_F * 3.1f * t), t);
+            return 0.65f * saw_a + 0.45f * sq_b;
+        }
+        case 1: {
+            float tri = triangle_usg(150.0f + 90.0f * sin(2.0f * PI_F * 11.0f * t), t);
+            float ring = sin(2.0f * PI_F * 400.0f * t) * sin(2.0f * PI_F * 1250.0f * t);
+            return 0.5f * tri + 0.8f * ring;
+        }
+        case 2: {
+            float fm = sin(2.0f * PI_F * (110.0f + 550.0f * sin(2.0f * PI_F * 0.9f * t)) * t);
+            float sub = saw_usg(55.0f + 20.0f * sin(2.0f * PI_F * 0.2f * t), t);
+            return 0.75f * fm + 0.35f * sub;
+        }
+        case 3: {
+            float staircase = ((idx / 6) % 48) / 24.0f - 1.0f;
+            float fold = copysign(1.0f, sin(2.0f * PI_F * (60.0f + 420.0f * fabs(sin(2.0f * PI_F * 0.4f * t))) * t));
+            return 0.65f * staircase + 0.55f * fold;
+        }
+        case 4: {
+            float body = sin(2.0f * PI_F * (80.0f + 2400.0f * pulse_pop) * t);
+            return 0.9f * pulse_pop * body + 0.35f * noise * pulse_pop;
+        }
+        case 5: {
+            float f = 96.0f + 20.0f * sin(2.0f * PI_F * 0.3f * t);
+            float harmonics = 0.0f;
+            for (int h = 1; h <= 9; ++h) {
+                harmonics += saw_usg(f * h, t) / (float)h;
+            }
+            return 0.75f * harmonics + 0.25f * square_usg(f * 2.0f, t);
+        }
+        case 6: {
+            float friction = noise * (0.45f + 0.55f * fabs(sin(2.0f * PI_F * 5.0f * t)));
+            float scrape = saw_usg(35.0f + 12.0f * sin(2.0f * PI_F * 0.7f * t), t) * 0.25f;
+            return 1.1f * friction + scrape;
+        }
+        case 7:
+            return 0.8f * sin(2.0f * PI_F * 60.0f * t) + 0.32f * sin(2.0f * PI_F * 120.0f * t) + 0.15f * sin(2.0f * PI_F * 180.0f * t) + 0.05f * sin(2.0f * PI_F * 7.0f * t);
+        case 8: {
+            float dry = 0.65f * sin(2.0f * PI_F * 140.0f * t) + 0.45f * saw_usg(280.0f, t) + 0.25f * square_usg(35.0f, t);
+            return tanh(dry * 3.8f);
+        }
+        case 9: {
+            float snap = sin(2.0f * PI_F * (190.0f + 4200.0f * pulse_spank) * t);
+            float tail = saw_usg(70.0f, t) * pulse_spank * 0.4f;
+            return 1.1f * pulse_spank * snap + tail;
+        }
+        case 10: {
+            float fm = sin(2.0f * PI_F * (90.0f + 1400.0f * sin(2.0f * PI_F * 2.4f * t)) * t);
+            float sq = square_usg(43.0f, t);
+            return tanh((fm + 0.8f * sq + 0.4f * noise) * 4.2f);
+        }
+        case 11: {
+            float held = 0.85f * hold + 0.45f * saw_usg(120.0f + 65.0f * sin(2.0f * PI_F * 0.2f * t), t);
+            float ghost = square_usg(40.0f + 170.0f * fabs(held), t) * 0.25f;
+            return held + ghost;
+        }
+        case 12: {
+            float gate = sin(2.0f * PI_F * 2.8f * t) >= 0.0f ? 1.0f : -1.0f;
+            float chirp_freq = 250.0f + 2400.0f * fract_usg(t * 1.6f);
+            float chirp = sin(2.0f * PI_F * chirp_freq * t);
+            return 0.7f * chirp * gate + 0.35f * triangle_usg(90.0f, t);
+        }
+        case 13: {
+            float staircase = ((idx / 3) % 24) / 12.0f - 1.0f;
+            float held = hash_unit(seed, idx / 21, 0x517cc1b727220a95UL);
+            float env = 0.45f + 0.55f * fabs(sin(2.0f * PI_F * 0.61f * t));
+            float fm = sin(2.0f * PI_F * (120.0f + 1800.0f * sin(2.0f * PI_F * 3.7f * t) + 420.0f * fabs(held)) * t);
+            float shriek = saw_usg(420.0f + 4200.0f * (0.5f + 0.5f * sin(2.0f * PI_F * 0.43f * t)) + 600.0f * env, t);
+            float sub = square_usg(27.0f + 90.0f * fabs(held), t);
+            float raw = 0.55f * fm + 0.45f * staircase + 0.45f * shriek + 0.35f * sub + 0.6f * held + 0.5f * noise;
+            return (sin(raw * 5.6f) + tanh(raw * 4.4f) + 0.55f * copysign(1.0f, raw)) / 1.9f;
+        }
+        case 14:
+        default: {
+            switch (lucky_mode) {
+                case 0: return 0.8f * saw_usg(80.0f + 20.0f * sin(2.0f * PI_F * 1.5f * t), t);
+                case 1: return 0.7f * square_usg(42.0f, t) + 0.4f * triangle_usg(620.0f, t);
+                case 2: return 0.6f * sin(2.0f * PI_F * (220.0f + 600.0f * sin(2.0f * PI_F * 0.8f * t)) * t);
+                case 3: return 0.5f * saw_usg(140.0f, t) + 0.5f * noise;
+                case 4: return 0.9f * (((idx / 8) % 32) / 16.0f - 1.0f);
+                default:return 0.6f * triangle_usg(300.0f + 120.0f * sin(2.0f * PI_F * 4.0f * t), t);
+            }
+        }
+    }
+}
+
+kernel void usg_render_style(
+    device float *out_samples [[buffer(0)]],
+    constant uint &n [[buffer(1)]],
+    constant float &sample_rate [[buffer(2)]],
+    constant uint &style_id [[buffer(3)]],
+    constant float &gain [[buffer(4)]],
+    constant ulong &seed [[buffer(5)]],
+    constant float &drive [[buffer(6)]],
+    constant float &crush_levels [[buffer(7)]],
+    constant float &crush_mix [[buffer(8)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= n) {
+        return;
+    }
+    float hiss_amp, click_prob, click_amp, glitch_prob, glitch_amp, bit_depth, style_drive;
+    style_params(style_id, hiss_amp, click_prob, click_amp, glitch_prob, glitch_amp, bit_depth, style_drive);
+    float t = gid / sample_rate;
+    float noise = hash_unit(seed, gid, 0x9e3779b97f4a7c15UL);
+    float click_gate = 0.5f * (hash_unit(seed, gid / 17, 0xbf58476d1ce4e5b9UL) + 1.0f);
+    float glitch_gate = 0.5f * (hash_unit(seed, gid / 96, 0x94d049bb133111ebUL) + 1.0f);
+    float click = click_gate < click_prob * 32.0f ? noise * click_amp : 0.0f;
+    float held = ((gid / 24) % 32) / 31.0f;
+    float glitch = glitch_gate < glitch_prob * 48.0f ? (held * 2.0f - 1.0f) * glitch_amp : 0.0f;
+    float base = synth_base(style_id, gid, t, sample_rate, seed);
+    float raw = base + noise * hiss_amp + click + glitch;
+    float levels = exp2(bit_depth);
+    float crushed = round(raw * levels) / levels;
+    float v = tanh(crushed * gain * style_drive);
+    v = tanh(v * drive);
+    if (crush_levels > 1.0f && crush_mix > 0.0f) {
+        float crushed_post = round(v * crush_levels) / crush_levels;
+        v = v * (1.0f - crush_mix) + crushed_post * crush_mix;
+    }
+    out_samples[gid] = clamp(v, -1.0f, 1.0f);
+}
 
 kernel void usg_post_fx(
     const device float *in_samples [[buffer(0)]],
@@ -28,17 +224,183 @@ kernel void usg_post_fx(
         float crushed = round(v * crush_levels) / crush_levels;
         v = v * (1.0f - crush_mix) + crushed * crush_mix;
     }
-    if (v > 1.0f) {
-        v = 1.0f;
-    } else if (v < -1.0f) {
-        v = -1.0f;
-    }
-    out_samples[gid] = v;
+    out_samples[gid] = clamp(v, -1.0f, 1.0f);
 }
 "#;
 
+fn style_id(style: Style) -> u32 {
+    match style {
+        Style::Harsh => 0,
+        Style::Digital => 1,
+        Style::Meltdown => 2,
+        Style::Glitch => 3,
+        Style::Pop => 4,
+        Style::Buzz => 5,
+        Style::Rub => 6,
+        Style::Hum => 7,
+        Style::Distort => 8,
+        Style::Spank => 9,
+        Style::Punish => 10,
+        Style::Steal => 11,
+        Style::Wink => 12,
+        Style::Catastrophic => 13,
+        Style::Lucky => 14,
+    }
+}
+
 pub fn available() -> bool {
     Device::system_default().is_some()
+}
+
+pub fn availability_detail() -> String {
+    match Device::system_default() {
+        Some(device) => format!("Metal device detected: {}", device.name().to_string()),
+        None => "Metal unavailable: no system_default device".to_string(),
+    }
+}
+
+fn compile_pipeline(device: &Device, kernel_name: &str) -> Result<metal::ComputePipelineState> {
+    let options = CompileOptions::new();
+    let library = device
+        .new_library_with_source(METAL_KERNEL_SRC, &options)
+        .map_err(|e| anyhow!("failed to compile Metal source: {e}"))?;
+    let function = library
+        .get_function(kernel_name, None)
+        .map_err(|e| anyhow!("failed to load {kernel_name}: {e}"))?;
+    device
+        .new_compute_pipeline_state_with_function(&function)
+        .map_err(|e| anyhow!("failed to build Metal pipeline {kernel_name}: {e}"))
+}
+
+fn run_pipeline(
+    device: &Device,
+    pipeline: &metal::ComputePipelineState,
+    buffers: &[&metal::BufferRef],
+    frames: usize,
+) -> Result<()> {
+    let command_queue = device.new_command_queue();
+    let command_buffer = command_queue.new_command_buffer();
+    let encoder = command_buffer.new_compute_command_encoder();
+    encoder.set_compute_pipeline_state(pipeline);
+    for (idx, buffer) in buffers.iter().enumerate() {
+        encoder.set_buffer(idx as u64, Some(buffer), 0);
+    }
+    let w = pipeline.thread_execution_width() as u64;
+    let threads_per_group = MTLSize {
+        width: w.max(1),
+        height: 1,
+        depth: 1,
+    };
+    let threadgroups = MTLSize {
+        width: (frames as u64).div_ceil(threads_per_group.width),
+        height: 1,
+        depth: 1,
+    };
+    encoder.dispatch_thread_groups(threadgroups, threads_per_group);
+    encoder.end_encoding();
+    command_buffer.commit();
+    command_buffer.wait_until_completed();
+    let status = command_buffer.status();
+    if status != metal::MTLCommandBufferStatus::Completed {
+        return Err(anyhow!(
+            "Metal command failed with status {:?}",
+            status as NSUInteger
+        ));
+    }
+    Ok(())
+}
+
+pub fn render_style(
+    style: Style,
+    frames: usize,
+    sample_rate: f64,
+    gain: f64,
+    seed: u64,
+    drive: f64,
+    crush_bits: f64,
+    crush_mix: f64,
+) -> Result<Vec<f64>> {
+    if frames == 0 {
+        return Ok(Vec::new());
+    }
+
+    let device = Device::system_default().ok_or_else(|| anyhow!("no Metal device found"))?;
+    let pipeline = compile_pipeline(&device, "usg_render_style")?;
+    let sample_bytes = (frames * size_of::<f32>()) as u64;
+    let out_buffer = device.new_buffer(sample_bytes, MTLResourceOptions::StorageModeShared);
+    let n = frames as u32;
+    let sample_rate = sample_rate as f32;
+    let style_id = style_id(style);
+    let gain = gain.clamp(0.0, 1.0) as f32;
+    let drive = drive.clamp(0.1, 16.0) as f32;
+    let crush_levels = if crush_bits > 0.0 {
+        (2.0_f64).powf(crush_bits.clamp(0.0, 24.0)) as f32
+    } else {
+        0.0_f32
+    };
+    let crush_mix = crush_mix.clamp(0.0, 1.0) as f32;
+
+    let n_buffer = device.new_buffer_with_data(
+        (&n as *const u32) as *const c_void,
+        size_of::<u32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let sr_buffer = device.new_buffer_with_data(
+        (&sample_rate as *const f32) as *const c_void,
+        size_of::<f32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let style_buffer = device.new_buffer_with_data(
+        (&style_id as *const u32) as *const c_void,
+        size_of::<u32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let gain_buffer = device.new_buffer_with_data(
+        (&gain as *const f32) as *const c_void,
+        size_of::<f32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let seed_buffer = device.new_buffer_with_data(
+        (&seed as *const u64) as *const c_void,
+        size_of::<u64>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let drive_buffer = device.new_buffer_with_data(
+        (&drive as *const f32) as *const c_void,
+        size_of::<f32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let crush_levels_buffer = device.new_buffer_with_data(
+        (&crush_levels as *const f32) as *const c_void,
+        size_of::<f32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+    let crush_mix_buffer = device.new_buffer_with_data(
+        (&crush_mix as *const f32) as *const c_void,
+        size_of::<f32>() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    run_pipeline(
+        &device,
+        &pipeline,
+        &[
+            &out_buffer,
+            &n_buffer,
+            &sr_buffer,
+            &style_buffer,
+            &gain_buffer,
+            &seed_buffer,
+            &drive_buffer,
+            &crush_levels_buffer,
+            &crush_mix_buffer,
+        ],
+        frames,
+    )?;
+
+    let out_ptr = out_buffer.contents() as *const f32;
+    let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, frames) };
+    Ok(out_slice.iter().copied().map(|v| v as f64).collect())
 }
 
 pub fn post_fx_in_place(
@@ -62,16 +424,7 @@ pub fn post_fx_in_place(
     let crush_mix = crush_mix.clamp(0.0, 1.0) as f32;
 
     let device = Device::system_default().ok_or_else(|| anyhow!("no Metal device found"))?;
-    let options = CompileOptions::new();
-    let library = device
-        .new_library_with_source(METAL_KERNEL_SRC, &options)
-        .map_err(|e| anyhow!("failed to compile Metal source: {e}"))?;
-    let function = library
-        .get_function("usg_post_fx", None)
-        .map_err(|e| anyhow!("failed to load usg_post_fx: {e}"))?;
-    let pipeline = device
-        .new_compute_pipeline_state_with_function(&function)
-        .map_err(|e| anyhow!("failed to build Metal pipeline: {e}"))?;
+    let pipeline = compile_pipeline(&device, "usg_post_fx")?;
 
     let in_f32: Vec<f32> = samples.iter().map(|&x| x as f32).collect();
     let sample_bytes = (in_f32.len() * size_of::<f32>()) as u64;
@@ -103,40 +456,19 @@ pub fn post_fx_in_place(
         MTLResourceOptions::StorageModeShared,
     );
 
-    let command_queue = device.new_command_queue();
-    let command_buffer = command_queue.new_command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&pipeline);
-    encoder.set_buffer(0, Some(&in_buffer), 0);
-    encoder.set_buffer(1, Some(&out_buffer), 0);
-    encoder.set_buffer(2, Some(&n_buffer), 0);
-    encoder.set_buffer(3, Some(&drive_buffer), 0);
-    encoder.set_buffer(4, Some(&crush_levels_buffer), 0);
-    encoder.set_buffer(5, Some(&crush_mix_buffer), 0);
-
-    let w = pipeline.thread_execution_width() as u64;
-    let threads_per_group = MTLSize {
-        width: w.max(1),
-        height: 1,
-        depth: 1,
-    };
-    let threadgroups = MTLSize {
-        width: (samples.len() as u64).div_ceil(threads_per_group.width),
-        height: 1,
-        depth: 1,
-    };
-    encoder.dispatch_thread_groups(threadgroups, threads_per_group);
-    encoder.end_encoding();
-    command_buffer.commit();
-    command_buffer.wait_until_completed();
-
-    let status = command_buffer.status();
-    if status != metal::MTLCommandBufferStatus::Completed {
-        return Err(anyhow!(
-            "Metal command failed with status {:?}",
-            status as NSUInteger
-        ));
-    }
+    run_pipeline(
+        &device,
+        &pipeline,
+        &[
+            &in_buffer,
+            &out_buffer,
+            &n_buffer,
+            &drive_buffer,
+            &crush_levels_buffer,
+            &crush_mix_buffer,
+        ],
+        samples.len(),
+    )?;
 
     let out_ptr = out_buffer.contents() as *const f32;
     let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, samples.len()) };
