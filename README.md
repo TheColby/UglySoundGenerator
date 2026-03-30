@@ -787,7 +787,7 @@ w_c\,\mathrm{clip\_norm}
 
 where each term is normalized into a comparable range and then combined by hand-tuned weights. This is a pragmatic psychoacoustic proxy, not a claim of formal listening-test calibration.
 
-## Joke Math: The UglierBasis Equation
+## The UglierBasis Equation
 
 This section is intentionally not the real model. It is a ceremonial overreaction for anyone who feels a normal ugliness score is insufficiently dramatic and also insufficiently covered in summation symbols.
 
@@ -837,12 +837,12 @@ Phi_7 = [sum_b H_b] divided by [1 + sum_b 1/(1 + I_b + W_b)]
 
 Where the coefficient families are, of course, completely serious:
 
-- `\alpha`: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
-- `\beta`: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
-- `\gamma`: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
-- `\delta`: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
-- `\kappa`: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
-- `\lambda`: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
+- $\alpha$: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
+- $\beta$: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
+- $\gamma$: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
+- $\delta$: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
+- $\kappa$: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
+- $\lambda$: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
 
 ### Radical explanation of the nonsense
 
