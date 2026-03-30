@@ -795,54 +795,30 @@ For fun, the analyzer now has a matching `--joke` mode that computes a real `Ugl
 
 It is now written as a staged bureaucracy of sub-terms so the renderer does not spontaneously resign.
 
-```math
-\mathfrak{U}_{\mathrm{UglierBasis}}(x)=1000\,\sigma\!\left(\Phi_{1}+\Phi_{2}+\Phi_{3}+\Phi_{4}+\Phi_{5}+\Phi_{6}-\lambda\Phi_{7}\right)
+Renderer-safe headline equation:
+
+```text
+UglierBasis(x) = 1000 * sigmoid(Phi_1 + Phi_2 + Phi_3 + Phi_4 + Phi_5 + Phi_6 - lambda * Phi_7)
 ```
 
 Renderer-safe pseudo-math for the sub-terms:
 
-```text
-Phi_1 = triple_sum_over_(m,b,q) of
-        [ (alpha1*C^q + alpha2*R_b^q + alpha3*S_b^q + alpha4*D_b^q + alpha5*T_m^q)
-          * (1 + alpha6*I_b + alpha7*B_b + alpha8*F_b + alpha9*W_b)
-          / (1 + alpha10*H_b + alpha11*L_m + alpha12*|X_m - O_b|) ]
-        divided by [1 + sum_m 1/(1 + G_m + P_m + J_m)]
-
-Phi_2 = sum_m [ sum_b (A_b + Z_b + Q_b)^2 / (1 + sum_r L_m^r/(1 + r + N_m)) ]
-        divided by [1 + sum_(m,b) H_b/(1 + E_m + Y_m)]
-
-Phi_3 = product_over_b [1 + (beta1*M_b + beta2*V_b + beta3*K_b)/(1 + beta4*H_b)]^(1/B) - 1
-        divided by [1 + product_over_m (1 + 1/(1 + G_m^2))^(1/M)]
-
-Phi_4 = sum_m of
-        { sum_b [ gamma1*sin(omega1*(B_b + F_b + Y_m))
-                + gamma2*cos(omega2*(A_b + Z_b + Q_b)) ]
-          / [1 + H_b/(1 + I_b) + L_m/(1 + T_m)] }
-        divided by [1 + sum_b 1/(1 + R_b*S_b*D_b)]
-
-Phi_5 = double_sum_over_(m,b) of
-        [ (delta1*O_b + delta2*A_b + delta3*E_m + delta4*N_m + delta5*Y_m)
-          * (delta6*X_m + delta7*J_m + delta8*V_b + delta9*K_b)
-          / (1 + H_b^2/(1 + I_b) + T_m^2/(1 + L_m)) ]
-        divided by [1 + sum_(m,b) 1/(1 + (C + R_b + S_b + D_b)^2)]
-
-Phi_6 = sum_u product_v
-        [ 1 + (kappa_uv^(1)*C + kappa_uv^(2)*R + kappa_uv^(3)*S + kappa_uv^(4)*D
-              + kappa_uv^(5)*A + kappa_uv^(6)*Z + kappa_uv^(7)*Q)
-              / (1 + kappa_uv^(8)*H + kappa_uv^(9)*L + kappa_uv^(10)*T) ]
-        divided by [1 + sum_(u,v) 1/(1 + kappa_uv^(11)*M + kappa_uv^(12)*P + kappa_uv^(13)*J)]
-
-Phi_7 = [sum_b H_b] divided by [1 + sum_b 1/(1 + I_b + W_b)]
-```
+- `Phi_1`: a triple sum over time windows, Bark bands, and powers `q`, with the clip-rough-sharp-dissonant core in the numerator and a harmonicity-loudness-stereo mismatch denominator underneath it.
+- `Phi_2`: the alias-spray, zipper-noise, and quantization-shame tribunal, divided by still more harmonicity and envelope bureaucracy.
+- `Phi_3`: a product term where modulation glare, vibrato malpractice, and cadence collapse compound multiplicatively, then get normalized by a separate gate-surprise product.
+- `Phi_4`: the trigonometric wobble chamber, where sine and cosine are used to make the ugliness oscillate instead of merely sitting there.
+- `Phi_5`: a double sum cross-coupling overtone hostility, envelope panic, notch cruelty, stereo argument, jitter, and vibrato malpractice.
+- `Phi_6`: the ceremonial tensor-bureaucracy layer, with `kappa_uv` constants distributed across a `sum_u product_v` structure purely for institutional intimidation.
+- `Phi_7`: the harmonicity relief term, whose only job is to lower the score a little before the rest of the equation raises it again out of spite.
 
 Where the coefficient families are, of course, completely serious:
 
-- $\alpha$: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
-- $\beta$: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
-- $\gamma$: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
-- $\delta$: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
-- $\kappa$: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
-- $\lambda$: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
+- `α`: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
+- `β`: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
+- `γ`: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
+- `δ`: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
+- `κ`: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
+- `λ`: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
 
 ### Radical explanation of the nonsense
 
