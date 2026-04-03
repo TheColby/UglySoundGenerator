@@ -90,6 +90,77 @@ Working directory note:
 - Regenerate the corpus from repo root with `./scripts/generate_example_corpus.sh`.
 - The corpus intentionally mixes `render`, `chain`, `go`, and `speech` paths so the examples exercise more than one subsystem.
 
+## Playable Examples
+
+The repo ships a large corpus of example WAVs under `examples/audio/`. The players below point directly at files that are already in the repository.
+
+If your GitHub client refuses to render embedded audio, every row also includes a direct WAV link.
+
+<details open>
+  <summary><strong>Seed Set</strong></summary>
+  <table>
+    <tr><td><code>00_source_hum.wav</code></td><td><a href="examples/audio/00_source_hum.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/00_source_hum.wav"></audio></td></tr>
+    <tr><td><code>01_harsh.wav</code></td><td><a href="examples/audio/01_harsh.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/01_harsh.wav"></audio></td></tr>
+    <tr><td><code>02_punish.wav</code></td><td><a href="examples/audio/02_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/02_punish.wav"></audio></td></tr>
+    <tr><td><code>04_ps1_grit.wav</code></td><td><a href="examples/audio/04_ps1_grit.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/04_ps1_grit.wav"></audio></td></tr>
+    <tr><td><code>09_rom_corruption.wav</code></td><td><a href="examples/audio/09_rom_corruption.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/09_rom_corruption.wav"></audio></td></tr>
+    <tr><td><code>11_streamed_glitch.wav</code></td><td><a href="examples/audio/11_streamed_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/11_streamed_glitch.wav"></audio></td></tr>
+  </table>
+</details>
+
+<details>
+  <summary><strong>Render Gallery</strong></summary>
+  <table>
+    <tr><td><code>012_render_harsh_v01.wav</code></td><td><a href="examples/audio/012_render_harsh_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/012_render_harsh_v01.wav"></audio></td></tr>
+    <tr><td><code>020_render_digital_v01.wav</code></td><td><a href="examples/audio/020_render_digital_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/020_render_digital_v01.wav"></audio></td></tr>
+    <tr><td><code>028_render_meltdown_v01.wav</code></td><td><a href="examples/audio/028_render_meltdown_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/028_render_meltdown_v01.wav"></audio></td></tr>
+    <tr><td><code>036_render_glitch_v01.wav</code></td><td><a href="examples/audio/036_render_glitch_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/036_render_glitch_v01.wav"></audio></td></tr>
+    <tr><td><code>052_render_buzz_v01.wav</code></td><td><a href="examples/audio/052_render_buzz_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/052_render_buzz_v01.wav"></audio></td></tr>
+    <tr><td><code>076_render_distort_v01.wav</code></td><td><a href="examples/audio/076_render_distort_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/076_render_distort_v01.wav"></audio></td></tr>
+    <tr><td><code>092_render_punish_v01.wav</code></td><td><a href="examples/audio/092_render_punish_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/092_render_punish_v01.wav"></audio></td></tr>
+    <tr><td><code>108_render_catastrophic_v01.wav</code></td><td><a href="examples/audio/108_render_catastrophic_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/108_render_catastrophic_v01.wav"></audio></td></tr>
+    <tr><td><code>124_render_lucky_v01.wav</code></td><td><a href="examples/audio/124_render_lucky_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/124_render_lucky_v01.wav"></audio></td></tr>
+  </table>
+</details>
+
+<details>
+  <summary><strong>Chain Presets</strong></summary>
+  <table>
+    <tr><td><code>132_chain_arcade_overheat_v01.wav</code></td><td><a href="examples/audio/132_chain_arcade_overheat_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/132_chain_arcade_overheat_v01.wav"></audio></td></tr>
+    <tr><td><code>144_chain_binaural_nuisance_v01.wav</code></td><td><a href="examples/audio/144_chain_binaural_nuisance_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/144_chain_binaural_nuisance_v01.wav"></audio></td></tr>
+    <tr><td><code>156_chain_chip_broken_clock_v01.wav</code></td><td><a href="examples/audio/156_chain_chip_broken_clock_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/156_chain_chip_broken_clock_v01.wav"></audio></td></tr>
+    <tr><td><code>168_chain_console_busfight_v01.wav</code></td><td><a href="examples/audio/168_chain_console_busfight_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/168_chain_console_busfight_v01.wav"></audio></td></tr>
+    <tr><td><code>180_chain_ps1_grit_v01.wav</code></td><td><a href="examples/audio/180_chain_ps1_grit_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/180_chain_ps1_grit_v01.wav"></audio></td></tr>
+    <tr><td><code>192_chain_wolf_fifth_panic_v01.wav</code></td><td><a href="examples/audio/192_chain_wolf_fifth_panic_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/192_chain_wolf_fifth_panic_v01.wav"></audio></td></tr>
+  </table>
+</details>
+
+<details>
+  <summary><strong>Go / Contour Transforms</strong></summary>
+  <table>
+    <tr><td><code>06_go_punish.wav</code></td><td><a href="examples/audio/06_go_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/06_go_punish.wav"></audio></td></tr>
+    <tr><td><code>07_go_glitch_contour.wav</code></td><td><a href="examples/audio/07_go_glitch_contour.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/07_go_glitch_contour.wav"></audio></td></tr>
+    <tr><td><code>198_go_01_linear_curve_01_glitch.wav</code></td><td><a href="examples/audio/198_go_01_linear_curve_01_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/198_go_01_linear_curve_01_glitch.wav"></audio></td></tr>
+    <tr><td><code>232_go_12_step_pattern_01_punish.wav</code></td><td><a href="examples/audio/232_go_12_step_pattern_01_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/232_go_12_step_pattern_01_punish.wav"></audio></td></tr>
+    <tr><td><code>294_go_33_morph_pattern_11_glitch.wav</code></td><td><a href="examples/audio/294_go_33_morph_pattern_11_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/294_go_33_morph_pattern_11_glitch.wav"></audio></td></tr>
+    <tr><td><code>296_go_33_morph_pattern_11_lucky.wav</code></td><td><a href="examples/audio/296_go_33_morph_pattern_11_lucky.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/296_go_33_morph_pattern_11_lucky.wav"></audio></td></tr>
+  </table>
+</details>
+
+<details>
+  <summary><strong>Speech Chips</strong></summary>
+  <table>
+    <tr><td><code>297_speech_votrax-sc01_pulse.wav</code></td><td><a href="examples/audio/297_speech_votrax-sc01_pulse.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/297_speech_votrax-sc01_pulse.wav"></audio></td></tr>
+    <tr><td><code>300_speech_votrax-sc01_formant.wav</code></td><td><a href="examples/audio/300_speech_votrax-sc01_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/300_speech_votrax-sc01_formant.wav"></audio></td></tr>
+    <tr><td><code>305_speech_tms5220_buzz.wav</code></td><td><a href="examples/audio/305_speech_tms5220_buzz.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/305_speech_tms5220_buzz.wav"></audio></td></tr>
+    <tr><td><code>312_speech_sp0256_formant.wav</code></td><td><a href="examples/audio/312_speech_sp0256_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/312_speech_sp0256_formant.wav"></audio></td></tr>
+    <tr><td><code>319_speech_mea8000_koch.wav</code></td><td><a href="examples/audio/319_speech_mea8000_koch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/319_speech_mea8000_koch.wav"></audio></td></tr>
+    <tr><td><code>323_speech_s14001a_buzz.wav</code></td><td><a href="examples/audio/323_speech_s14001a_buzz.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/323_speech_s14001a_buzz.wav"></audio></td></tr>
+    <tr><td><code>330_speech_c64-sam_formant.wav</code></td><td><a href="examples/audio/330_speech_c64-sam_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/330_speech_c64-sam_formant.wav"></audio></td></tr>
+    <tr><td><code>332_speech_c64-sam_strange.wav</code></td><td><a href="examples/audio/332_speech_c64-sam_strange.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/332_speech_c64-sam_strange.wav"></audio></td></tr>
+  </table>
+</details>
+
 ## Ugly Recipes (Many CLI Examples)
 
 `usg render` is now streamed for long renders, so you can generate very large files without allocating the whole waveform in RAM.
