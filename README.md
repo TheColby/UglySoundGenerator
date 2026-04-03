@@ -913,6 +913,42 @@ What it actually does in code:
 
 The output includes a real `joke.uglierbasis_index`, a verdict such as `academically ugly` or `please turn that off`, and a structured breakdown in JSON mode.
 
+## Roadmap
+
+`usg` already covers ugly synthesis, analysis, transformation, corpus generation, benchmarking, and chip-speech rendering. The next steps are about making those systems deeper, more reproducible, and more historically specific.
+
+### Near-term milestones
+
+- `v0.4`: Make speech synthesis feel more like real retro speech hardware instead of a wide option surface. Focus on text normalization, phoneme parsing, allophone timing, chip-specific formant tables, consonant/noise models, prosody control, and better sentence pacing.
+- `v0.5`: Expand analysis into a stronger research and corpus tool. Add batch corpus analysis, comparison reports, per-frame ugliness timelines, spectrogram export, richer JSON breakdowns, and clearer “why this scored ugly” reporting.
+- `v0.6`: Deepen `go` and `chain` so they behave more like smart transformation systems. Focus on multiband uglification, adaptive effect ordering, stronger target-seeking, preset families, and reusable recipe export.
+
+### Major themes
+
+- Speech IC emulation:
+  Prioritize named chip personalities such as `votrax-sc01`, `sp0256`, `tms5220`, `mea8000`, `s14001a`, and `c64-sam`, plus historically-inspired variants that are wrong in interesting ways.
+- Text-driven speech workflows:
+  Support letter, word, sentence, and paragraph input more deeply, with controllable phrasing, breath groups, speaking rate drift, punctuation handling, and intentionally broken articulation modes.
+- Analysis and explainability:
+  Keep building out the psychoacoustic side with stronger roughness/sharpness models, temporal plots, comparison tools, salience maps, and better linkage between metric components and the final ugliness score.
+- Corpus and benchmarking:
+  Ship larger reproducible example packs, benchmark suites, profile comparison tools, and manifests so users can regenerate and compare ugly outputs across versions and backends.
+- Interoperability:
+  Add richer exports such as manifests, recipe files, timeline data, and library-friendly APIs so `usg` can act as both a CLI tool and a component inside other audio workflows.
+- UX:
+  Improve `--help`, preset discovery, progress reporting, recipe recall, and “show me how this file was made” features so the tool stays playful without becoming opaque.
+
+### Recommended next focus
+
+If only one track gets concentrated effort next, it should be speech. The highest-payoff sequence is:
+
+1. Text normalization and phoneme parsing.
+2. Chip-specific speech backends and allophone inventories.
+3. More oscillators, excitation sources, and noise/consonant models.
+4. Better sentence and paragraph timing control.
+5. Stronger `speech-pack` ranking for intelligibility versus ugliness.
+6. Export of phoneme timelines, analysis JSON, and reproducible speech recipes.
+
 ## Appendix B
 
 ### B.1 Scope Of This Reading List
