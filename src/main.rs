@@ -12,12 +12,13 @@ use usg::{
     AnalysisReport, AnalyzeModel, AnalyzeOptions, ChainStage, CoordSystem, DEFAULT_GPU_CRUSH_BITS,
     DEFAULT_GPU_CRUSH_MIX, DEFAULT_GPU_DRIVE, GoFlavor, OutputEncoding, RenderBackend,
     RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile, SpeechInputMode,
-    SpeechOscillator, SpeechRenderOptions, Style, SurroundLayout, Trajectory, UglinessContour,
-    analyze_wav_with_options, available_effects, available_styles, backend_capabilities,
-    backend_status_report, default_jobs, go_ugly_file_with_engine_contour_encoding,
-    go_ugly_upmix_file_with_engine_contour_encoding, parse_chain_stage, point_to_xyz,
-    render_chain_to_wav_with_engine, render_speech_to_wav_with_engine, render_to_wav_with_engine,
-    resolve_backend_plan,
+    SpeechIntelligibility, SpeechOscillator, SpeechRenderOptions, Style, SurroundLayout,
+    Trajectory, UglinessContour, analyze_wav_with_options, available_effects, available_styles,
+    backend_capabilities, backend_status_report, default_jobs,
+    go_ugly_file_with_engine_contour_encoding, go_ugly_upmix_file_with_engine_contour_encoding,
+    parse_chain_stage, point_to_xyz, render_chain_to_wav_with_engine,
+    render_speech_with_artifacts_to_wav_with_engine, render_to_wav_with_engine,
+    resolve_backend_plan, score_speech_intelligibility,
 };
 
 #[derive(Debug, Parser)]
@@ -135,6 +136,10 @@ struct SpeechArgs {
     #[arg(long, value_enum, default_value_t = SpeechInputModeArg::Auto)]
     input_mode: SpeechInputModeArg,
 
+    /// Disable speech-text normalization before parsing.
+    #[arg(long)]
+    no_normalize_text: bool,
+
     /// Speech-chip-inspired profile.
     #[arg(long, value_enum, default_value_t = SpeechChipProfileArg::Tms5220)]
     profile: SpeechChipProfileArg,
@@ -230,6 +235,18 @@ struct SpeechArgs {
     #[arg(long, default_value_t = 0.25)]
     emphasis: f64,
 
+    /// Per-word accent shaping.
+    #[arg(long, default_value_t = 0.18)]
+    word_accent: f64,
+
+    /// Per-sentence melodic lilt shaping.
+    #[arg(long, default_value_t = 0.14)]
+    sentence_lilt: f64,
+
+    /// Per-paragraph downward contour amount.
+    #[arg(long, default_value_t = 0.10)]
+    paragraph_decline: f64,
+
     /// Gap after whitespace.
     #[arg(long, default_value_t = 42.0)]
     word_gap_ms: f64,
@@ -321,6 +338,14 @@ struct SpeechArgs {
     /// Try to play the output file after rendering.
     #[arg(long)]
     play: bool,
+
+    /// Optional JSON path for rendered speech metadata and analysis.
+    #[arg(long)]
+    analysis_json: Option<PathBuf>,
+
+    /// Optional JSON path for phoneme timeline export.
+    #[arg(long)]
+    timeline_json: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -395,6 +420,10 @@ struct SpeechPackArgs {
     /// Number of top ugliest entries to print.
     #[arg(long, default_value_t = 5)]
     top: usize,
+
+    /// How to rank speech-pack entries.
+    #[arg(long, value_enum, default_value_t = SpeechPackRankArg::Balanced)]
+    rank_by: SpeechPackRankArg,
 
     /// Rendering backend.
     #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
@@ -865,14 +894,26 @@ enum SpeechChipProfileArg {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum SpeechOscillatorArg {
+    Sine,
     Pulse,
     Triangle,
     Saw,
     Noise,
     Buzz,
     Formant,
+    Vowel,
     Ring,
     Fold,
+    Organ,
+    Fm,
+    Sync,
+    Lfsr,
+    Grain,
+    Chirp,
+    Subharmonic,
+    Reed,
+    Click,
+    Comb,
     Koch,
     Mandelbrot,
     Strange,
@@ -892,6 +933,13 @@ enum SpeechInputModeArg {
 enum AnalyzeModelArg {
     Basic,
     Psycho,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SpeechPackRankArg {
+    Ugliness,
+    Intelligibility,
+    Balanced,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -985,14 +1033,26 @@ impl From<SpeechChipProfileArg> for SpeechChipProfile {
 impl From<SpeechOscillatorArg> for SpeechOscillator {
     fn from(value: SpeechOscillatorArg) -> Self {
         match value {
+            SpeechOscillatorArg::Sine => SpeechOscillator::Sine,
             SpeechOscillatorArg::Pulse => SpeechOscillator::Pulse,
             SpeechOscillatorArg::Triangle => SpeechOscillator::Triangle,
             SpeechOscillatorArg::Saw => SpeechOscillator::Saw,
             SpeechOscillatorArg::Noise => SpeechOscillator::Noise,
             SpeechOscillatorArg::Buzz => SpeechOscillator::Buzz,
             SpeechOscillatorArg::Formant => SpeechOscillator::Formant,
+            SpeechOscillatorArg::Vowel => SpeechOscillator::Vowel,
             SpeechOscillatorArg::Ring => SpeechOscillator::Ring,
             SpeechOscillatorArg::Fold => SpeechOscillator::Fold,
+            SpeechOscillatorArg::Organ => SpeechOscillator::Organ,
+            SpeechOscillatorArg::Fm => SpeechOscillator::Fm,
+            SpeechOscillatorArg::Sync => SpeechOscillator::Sync,
+            SpeechOscillatorArg::Lfsr => SpeechOscillator::Lfsr,
+            SpeechOscillatorArg::Grain => SpeechOscillator::Grain,
+            SpeechOscillatorArg::Chirp => SpeechOscillator::Chirp,
+            SpeechOscillatorArg::Subharmonic => SpeechOscillator::Subharmonic,
+            SpeechOscillatorArg::Reed => SpeechOscillator::Reed,
+            SpeechOscillatorArg::Click => SpeechOscillator::Click,
+            SpeechOscillatorArg::Comb => SpeechOscillator::Comb,
             SpeechOscillatorArg::Koch => SpeechOscillator::Koch,
             SpeechOscillatorArg::Mandelbrot => SpeechOscillator::Mandelbrot,
             SpeechOscillatorArg::Strange => SpeechOscillator::Strange,
@@ -1156,6 +1216,7 @@ fn speech(args: SpeechArgs) -> Result<()> {
         input_mode: args.input_mode.into(),
         sample_rate: args.sample_rate,
         seed: args.seed,
+        normalize_text: !args.no_normalize_text,
         chip_profile: args.profile.into(),
         primary_osc: args.primary_osc.into(),
         secondary_osc: args.secondary_osc.into(),
@@ -1181,6 +1242,9 @@ fn speech(args: SpeechArgs) -> Result<()> {
         glide: args.glide,
         monotone: args.monotone,
         emphasis: args.emphasis,
+        word_accent: args.word_accent,
+        sentence_lilt: args.sentence_lilt,
+        paragraph_decline: args.paragraph_decline,
         word_gap_ms: args.word_gap_ms,
         sentence_gap_ms: args.sentence_gap_ms,
         paragraph_gap_ms: args.paragraph_gap_ms,
@@ -1196,15 +1260,18 @@ fn speech(args: SpeechArgs) -> Result<()> {
         drift: args.drift,
         resampler_grit: args.resampler_grit,
     };
-    let summary = render_speech_to_wav_with_engine(&args.output, &opts, &engine)?;
+    let artifacts = render_speech_with_artifacts_to_wav_with_engine(&args.output, &opts, &engine)?;
+    let summary = artifacts.summary.clone();
     println!(
-        "Rendered speech to {} ({} frames @ {} Hz, profile={}, mode={}, units={}, format={})",
+        "Rendered speech to {} ({} frames @ {} Hz, profile={}, backend={}, mode={}, units={}, phonemes={}, format={})",
         args.output.display(),
         summary.frames,
         summary.sample_rate,
         summary.chip_profile,
+        summary.backend_kind,
         summary.input_mode,
         summary.units_rendered,
+        summary.phonemes_rendered,
         summary.output_encoding
     );
     println!(
@@ -1212,6 +1279,30 @@ fn speech(args: SpeechArgs) -> Result<()> {
         opts.primary_osc, opts.secondary_osc, opts.tertiary_osc
     );
     println!("seed: {}", summary.seed);
+    if let Some(path) = args.analysis_json.as_ref() {
+        let analysis = analyze_wav_with_options(
+            &args.output,
+            &AnalyzeOptions {
+                model: AnalyzeModel::Psycho,
+                fft_size: 2048,
+                hop_size: 512,
+                joke: false,
+            },
+        )?;
+        let payload = serde_json::json!({
+            "summary": &summary,
+            "analysis": analysis,
+            "intelligibility": score_speech_intelligibility(&summary, &artifacts.timeline),
+        });
+        write_json(path, &payload)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+        println!("analysis json: {}", path.display());
+    }
+    if let Some(path) = args.timeline_json.as_ref() {
+        write_json(path, &artifacts.timeline)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+        println!("timeline json: {}", path.display());
+    }
 
     if args.play {
         let played = try_play_audio(&args.output);
@@ -1365,6 +1456,7 @@ struct SpeechPackEntry {
     seed: u64,
     output: String,
     ugly_index: f64,
+    intelligibility: SpeechIntelligibility,
     analysis: AnalysisReport,
 }
 
@@ -1374,6 +1466,8 @@ struct SpeechPackRankingEntry {
     profile: String,
     output: String,
     ugly_index: f64,
+    intelligibility_index: f64,
+    rank_score: f64,
     basic_ugly_index: f64,
     seed: u64,
 }
@@ -1382,6 +1476,7 @@ struct SpeechPackRankingEntry {
 struct SpeechPackSummary {
     generated_unix_s: u64,
     model: String,
+    rank_by: String,
     text: String,
     sample_rate_hz: u32,
     backend_requested: String,
@@ -1391,6 +1486,16 @@ struct SpeechPackSummary {
     profiles_rendered: usize,
     entries: Vec<SpeechPackEntry>,
     ranking: Vec<SpeechPackRankingEntry>,
+}
+
+fn speech_pack_rank_score(entry: &SpeechPackEntry, rank_by: SpeechPackRankArg) -> f64 {
+    match rank_by {
+        SpeechPackRankArg::Ugliness => entry.ugly_index,
+        SpeechPackRankArg::Intelligibility => entry.intelligibility.intelligibility_index,
+        SpeechPackRankArg::Balanced => {
+            0.65 * entry.ugly_index + 0.35 * entry.intelligibility.intelligibility_index
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1487,6 +1592,11 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
     let base_seed = args.seed.unwrap_or_else(seed_from_time);
     let profiles = SpeechChipProfile::ALL;
     let tasks: Vec<(usize, SpeechChipProfile)> = profiles.iter().copied().enumerate().collect();
+    let rank_by = match args.rank_by {
+        SpeechPackRankArg::Ugliness => "ugliness",
+        SpeechPackRankArg::Intelligibility => "intelligibility",
+        SpeechPackRankArg::Balanced => "balanced",
+    };
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(plan.jobs)
@@ -1506,6 +1616,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
                     input_mode: args.input_mode.into(),
                     sample_rate: args.sample_rate,
                     seed: Some(seed),
+                    normalize_text: true,
                     chip_profile: *profile,
                     pitch_hz: args.pitch_hz,
                     normalize: !args.no_normalize,
@@ -1513,10 +1624,13 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
                     output_encoding,
                     ..SpeechRenderOptions::default()
                 };
-                render_speech_to_wav_with_engine(&output, &opts, &engine)
-                    .with_context(|| format!("failed to render {}", output.display()))?;
+                let artifacts =
+                    render_speech_with_artifacts_to_wav_with_engine(&output, &opts, &engine)
+                        .with_context(|| format!("failed to render {}", output.display()))?;
                 let analysis = analyze_wav_with_options(&output, &analyze_options)
                     .with_context(|| format!("failed to analyze {}", output.display()))?;
+                let intelligibility =
+                    score_speech_intelligibility(&artifacts.summary, &artifacts.timeline);
                 Ok((
                     *idx,
                     SpeechPackEntry {
@@ -1524,6 +1638,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
                         seed,
                         output: output.display().to_string(),
                         ugly_index: analysis.selected_ugly_index,
+                        intelligibility,
                         analysis,
                     },
                 ))
@@ -1539,7 +1654,9 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
     let entries: Vec<SpeechPackEntry> = ordered.into_iter().map(|(_, e)| e).collect();
 
     let mut ranked = entries.clone();
-    ranked.sort_by(|a, b| b.ugly_index.total_cmp(&a.ugly_index));
+    ranked.sort_by(|a, b| {
+        speech_pack_rank_score(b, args.rank_by).total_cmp(&speech_pack_rank_score(a, args.rank_by))
+    });
     let ranking: Vec<SpeechPackRankingEntry> = ranked
         .iter()
         .enumerate()
@@ -1548,6 +1665,8 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
             profile: e.profile.clone(),
             output: e.output.clone(),
             ugly_index: e.ugly_index,
+            intelligibility_index: e.intelligibility.intelligibility_index,
+            rank_score: speech_pack_rank_score(e, args.rank_by),
             basic_ugly_index: e.analysis.basic.ugly_index,
             seed: e.seed,
         })
@@ -1556,6 +1675,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
     let summary = SpeechPackSummary {
         generated_unix_s: now_unix_s(),
         model: analyze_options.model.as_str().to_string(),
+        rank_by: rank_by.to_string(),
         text: text.chars().take(80).collect(),
         sample_rate_hz: args.sample_rate,
         backend_requested: plan.requested.as_str().to_string(),
@@ -1590,14 +1710,20 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
         summary.jobs
     );
     println!("Text: \"{}\"", summary.text);
+    println!("Ranking: {}", summary.rank_by);
     println!("Summary: {}", summary_path.display());
     println!("CSV: {}", csv_path.display());
     println!("HTML: {}", html_path.display());
     println!("Top ugliest:");
     for row in summary.ranking.iter().take(args.top.max(1)) {
         println!(
-            "  {:>2}. {:<14} {:>5.1}/1000 (basic {:>5.1})  {}",
-            row.rank, row.profile, row.ugly_index, row.basic_ugly_index, row.output
+            "  {:>2}. {:<14} ugly {:>5.1}  intel {:>5.1}  score {:>5.1}  {}",
+            row.rank,
+            row.profile,
+            row.ugly_index,
+            row.intelligibility_index,
+            row.rank_score,
+            row.output
         );
     }
     Ok(())
@@ -2904,13 +3030,17 @@ fn write_speech_pack_csv(path: &Path, summary: &SpeechPackSummary) -> Result<()>
         }
     }
     let mut text = String::new();
-    text.push_str("rank,profile,ugly_index,basic_ugly_index,seed,output\n");
+    text.push_str(
+        "rank,profile,ugly_index,intelligibility_index,rank_score,basic_ugly_index,seed,output\n",
+    );
     for row in &summary.ranking {
         text.push_str(&format!(
-            "{},{},{:.6},{:.6},{},{}\n",
+            "{},{},{:.6},{:.6},{:.6},{:.6},{},{}\n",
             row.rank,
             csv_escape(&row.profile),
             row.ugly_index,
+            row.intelligibility_index,
+            row.rank_score,
             row.basic_ugly_index,
             row.seed,
             csv_escape(&row.output),
@@ -2930,10 +3060,12 @@ fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()
     let mut rows = String::new();
     for row in &summary.ranking {
         rows.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td><audio controls preload=\"none\" src=\"{}\"></audio></td></tr>\n",
+            "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td><audio controls preload=\"none\" src=\"{}\"></audio></td></tr>\n",
             row.rank,
             html_escape(&row.profile),
             row.ugly_index,
+            row.intelligibility_index,
+            row.rank_score,
             row.basic_ugly_index,
             row.seed,
             html_escape(file_name_or_path(&row.output)),
@@ -2990,7 +3122,7 @@ fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()
     <div class=\"card\">
       <h1>UglySoundGenerator Speech Pack Report</h1>
       <p>Text: &ldquo;{text}&rdquo;</p>
-      <p>Model: {model} | Profiles: {profiles_rendered} | SR: {sample_rate} Hz</p>
+      <p>Model: {model} | Ranking: {rank_by} | Profiles: {profiles_rendered} | SR: {sample_rate} Hz</p>
       <p>Backend: {backend_requested} -&gt; {backend_active} | Jobs: {jobs}</p>
       <p>Base seed: {base_seed}</p>
     </div>
@@ -3001,6 +3133,8 @@ fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()
             <th>Rank</th>
             <th>Profile</th>
             <th>Ugliness</th>
+            <th>Intelligibility</th>
+            <th>Rank Score</th>
             <th>Basic</th>
             <th>Seed</th>
             <th>Listen</th>
@@ -3015,6 +3149,7 @@ fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()
 </html>",
         text = html_escape(&summary.text),
         model = html_escape(&summary.model),
+        rank_by = html_escape(&summary.rank_by),
         profiles_rendered = summary.profiles_rendered,
         sample_rate = summary.sample_rate_hz,
         backend_requested = html_escape(&summary.backend_requested),

@@ -296,20 +296,21 @@ cargo run -- go clean.wav --type punish --level-contour ../presets/go_contours/0
 
 ## Chiptune Speech
 
-`usg speech` is the start of the next local subversion focus: text-to-chiptune speech synthesis modeled after classic speech-chip eras.
+`usg speech` is now the active `v0.4` focus: text-to-chiptune speech synthesis modeled after classic speech-chip eras, with built-in text normalization, an approximate phoneme parser, chip-specific speech backends, and exportable phoneme timelines.
 
 ### Speech Pipeline
 
 ```mermaid
 flowchart LR
-  text["text or text-file"] --> mode["input-mode splitter"]
-  mode --> units["characters / words / sentences / paragraphs"]
-  units --> params["symbol timing + pitch + emphasis"]
+  text["text or text-file"] --> normalizeText["text normalization"]
+  normalizeText --> parse["phoneme parser"]
+  parse --> mode["characters / words / sentences / paragraphs"]
+  mode --> params["phoneme timing + pitch + emphasis"]
   params --> osc["primary + secondary + tertiary oscillators"]
-  osc --> chip["chip voice model<br/>formants / buzz / hiss / consonant noise"]
+  osc --> chip["chip backend<br/>LPC / formant-grid / SAM / arcade PCM"]
   chip --> fx["chip FX<br/>bitcrush / sample-hold / fold / chaos / robotize / drift"]
-  fx --> norm["gain + optional normalize"]
-  norm --> wav["speech WAV"]
+  fx --> finish["gain + optional normalize"]
+  finish --> wav["speech WAV + timeline JSON + analysis JSON"]
 ```
 
 Current speech-chip-inspired profiles:
@@ -319,9 +320,10 @@ Current speech-chip-inspired profiles:
 
 Current speech oscillators:
 
-- `pulse`, `triangle`, `saw`, `noise`
-- `buzz`, `formant`, `ring`, `fold`
-- `koch`, `mandelbrot`, `strange`, `phoneme`
+- `sine`, `pulse`, `triangle`, `saw`, `noise`, `buzz`
+- `formant`, `vowel`, `ring`, `fold`, `organ`, `fm`
+- `sync`, `lfsr`, `grain`, `chirp`, `subharmonic`, `reed`
+- `click`, `comb`, `koch`, `mandelbrot`, `strange`, `phoneme`
 
 Text input can be a single letter, a word, a sentence, or a full paragraph:
 
@@ -334,22 +336,25 @@ cargo run -- speech --output out/paragraph.wav --text-file speech.txt --input-mo
 
 The command intentionally exposes a lot of shaping parameters already. Highlights:
 
-- text and segmentation: `--text`, `--text-file`, `--input-mode`
+- text and segmentation: `--text`, `--text-file`, `--input-mode`, `--no-normalize-text`
 - chip voicing: `--profile`, `--pitch-hz`, `--pitch-jitter`, `--vibrato-hz`, `--vibrato-depth`, `--monotone`, `--glide`
 - oscillator stack: `--primary-osc`, `--secondary-osc`, `--tertiary-osc`, `--duty-cycle`, `--ring-mix`, `--sub-mix`
 - speech color: `--formant-shift`, `--vowel-mix`, `--consonant-noise`, `--nasal`, `--throat`, `--buzz`, `--hiss`
 - chip destruction: `--bitcrush-bits`, `--sample-hold-hz`, `--fold`, `--chaos`, `--robotize`, `--resampler-grit`, `--drift`
 - timing: `--units-per-second`, `--attack-ms`, `--release-ms`, `--word-gap-ms`, `--sentence-gap-ms`, `--paragraph-gap-ms`, `--punctuation-gap-ms`
+- phrasing: `--word-accent`, `--sentence-lilt`, `--paragraph-decline`
+- exports: `--timeline-json`, `--analysis-json`
 
 Example "maximal nonsense" render:
 
 ```bash
 cargo run -- speech --output out/maximal_speech.wav --text "UGLY SOUND GENERATOR NOW SPEAKS IN FRACTALS." --profile handheld-lcd --primary-osc phoneme --secondary-osc koch --tertiary-osc strange --pitch-hz 132 --pitch-jitter 0.12 --vibrato-hz 6.5 --vibrato-depth 0.08 --formant-shift 1.2 --consonant-noise 0.9 --buzz 0.45 --fold 3.8 --chaos 0.8 --robotize 0.55 --bitcrush-bits 5.5 --sample-hold-hz 6800 --drift 0.12 --resampler-grit 0.7
+cargo run -- speech --output out/parsed.wav --text "Version 4 now talks in phonemes." --profile c64-sam --primary-osc vowel --secondary-osc fm --tertiary-osc comb --timeline-json out/parsed.timeline.json --analysis-json out/parsed.analysis.json
 ```
 
 ## Speech Pack
 
-`usg speech-pack` renders all 8 chip profiles for the same text, analyzes each, and produces a ranked report:
+`usg speech-pack` renders all 8 chip profiles for the same text, analyzes each, estimates intelligibility, and produces a ranked report:
 
 ```bash
 cargo run -- speech-pack --text "UGLY SOUND GENERATOR" --out-dir out/speech_pack
@@ -360,7 +365,7 @@ Outputs per run:
 
 - `<out-dir>/<N>_<profile>.wav` — one file per chip profile
 - `<out-dir>/summary.json` — full analysis data for each profile
-- `<out-dir>/ranking.csv` — profiles ranked by ugliness score
+- `<out-dir>/ranking.csv` — profiles ranked by ugliness, intelligibility, or a balanced blend
 - `<out-dir>/report.html` — listenable HTML report with audio players
 
 Key flags:
@@ -369,6 +374,7 @@ Key flags:
 - `--input-mode`: `auto`, `character`, `word`, `sentence`, `paragraph`
 - `--pitch-hz`: base pitch in Hz
 - `--model`: analysis model (`basic` or `psycho`, default `psycho`)
+- `--rank-by`: `ugliness`, `intelligibility`, or `balanced` (default)
 - `--top <N>`: how many top ugliest entries to print (default 5)
 - `--sample-rate`, `--backend`, `--jobs`: standard render controls
 
@@ -919,7 +925,7 @@ The output includes a real `joke.uglierbasis_index`, a verdict such as `academic
 
 ### Near-term milestones
 
-- `v0.4`: Make speech synthesis feel more like real retro speech hardware instead of a wide option surface. Focus on text normalization, phoneme parsing, allophone timing, chip-specific formant tables, consonant/noise models, prosody control, and better sentence pacing.
+- `v0.4`: Speech-focused release now in progress. Text normalization, phoneme parsing, chip-specific backends, expanded oscillator banks, intelligibility-aware speech-pack ranking, and phoneme/analysis JSON export are now part of the baseline; the next step inside `v0.4` is pushing further into allophone timing and chip-specific inventories.
 - `v0.5`: Expand analysis into a stronger research and corpus tool. Add batch corpus analysis, comparison reports, per-frame ugliness timelines, spectrogram export, richer JSON breakdowns, and clearer “why this scored ugly” reporting.
 - `v0.6`: Deepen `go` and `chain` so they behave more like smart transformation systems. Focus on multiband uglification, adaptive effect ordering, stronger target-seeking, preset families, and reusable recipe export.
 

@@ -231,6 +231,8 @@ fn presets_command_lists_and_shows_builtin_presets() {
 fn speech_command_renders_text_to_wav() {
     let dir = temp_dir("speech");
     let wav = dir.join("speech.wav");
+    let timeline = dir.join("speech.timeline.json");
+    let analysis = dir.join("speech.analysis.json");
 
     let out = Command::new(bin())
         .args([
@@ -247,6 +249,10 @@ fn speech_command_renders_text_to_wav() {
             "mandelbrot",
             "--tertiary-osc",
             "strange",
+            "--timeline-json",
+            timeline.to_str().expect("timeline path"),
+            "--analysis-json",
+            analysis.to_str().expect("analysis path"),
         ])
         .output()
         .expect("speech command");
@@ -260,6 +266,8 @@ fn speech_command_renders_text_to_wav() {
     let spec = reader.spec();
     assert_eq!(spec.channels, 1);
     assert!(reader.duration() > 1_000);
+    assert!(timeline.exists(), "timeline json missing");
+    assert!(analysis.exists(), "analysis json missing");
 }
 
 #[test]
@@ -491,13 +499,17 @@ fn speech_pack_renders_all_profiles_and_writes_outputs() {
     );
 
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("/1000"), "stdout was:\n{stdout}");
+    assert!(stdout.contains("ugly "), "stdout was:\n{stdout}");
+    assert!(stdout.contains("intel "), "stdout was:\n{stdout}");
     assert!(dir.join("summary.json").exists(), "summary.json missing");
     assert!(dir.join("ranking.csv").exists(), "ranking.csv missing");
     assert!(dir.join("report.html").exists(), "report.html missing");
 
     let csv = fs::read_to_string(dir.join("ranking.csv")).expect("csv");
-    assert!(csv.contains("rank,profile,"), "csv header wrong:\n{csv}");
+    assert!(
+        csv.contains("rank,profile,ugly_index,intelligibility_index,rank_score,"),
+        "csv header wrong:\n{csv}"
+    );
 }
 
 #[test]
