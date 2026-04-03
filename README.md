@@ -90,6 +90,23 @@ Working directory note:
 - Regenerate the corpus from repo root with `./scripts/generate_example_corpus.sh`.
 - The corpus intentionally mixes `render`, `chain`, `go`, and `speech` paths so the examples exercise more than one subsystem.
 
+### Corpus Layout
+
+```mermaid
+flowchart LR
+  corpus["examples/audio"] --> seed["seed set<br/>hand-picked reference clips"]
+  corpus --> render["render grid<br/>style variations"]
+  corpus --> chain["chain grid<br/>preset and staged renders"]
+  corpus --> go["go contours<br/>re-uglified source material"]
+  corpus --> speech["speech chips<br/>profile + oscillator variations"]
+
+  seed --> seedDocs["README_EXAMPLES.md"]
+  render --> styleCompare["style comparison"]
+  chain --> presetCompare["preset comparison"]
+  go --> contourCompare["contour comparison"]
+  speech --> chipCompare["chip voice comparison"]
+```
+
 ## Playable Examples
 
 The repo ships a large corpus of example WAVs under `examples/audio/`. The players below point directly at files that are already in the repository.
@@ -426,6 +443,20 @@ cargo run -- speech --output out/parsed.wav --text "Version 4 now talks in phone
 ## Speech Pack
 
 `usg speech-pack` renders all 8 chip profiles for the same text, analyzes each, estimates intelligibility, and produces a ranked report:
+
+### Speech Pack Ranking Flow
+
+```mermaid
+flowchart LR
+  text["shared text"] --> render["render all chip profiles"]
+  render --> wavs["N profile WAVs"]
+  wavs --> ugly["ugliness analysis"]
+  wavs --> intel["intelligibility heuristic"]
+  ugly --> merge["merge metrics"]
+  intel --> merge
+  merge --> rank["rank-by<br/>ugliness / intelligibility / balanced"]
+  rank --> outputs["summary.json<br/>ranking.csv<br/>report.html"]
+```
 
 ```bash
 cargo run -- speech-pack --text "UGLY SOUND GENERATOR" --out-dir out/speech_pack
@@ -993,6 +1024,27 @@ The output includes a real `joke.uglierbasis_index`, a verdict such as `academic
 ## Roadmap
 
 `usg` already covers ugly synthesis, analysis, transformation, corpus generation, benchmarking, and chip-speech rendering. The next steps are about making those systems deeper, more reproducible, and more historically specific.
+
+### Release Track
+
+```mermaid
+flowchart LR
+  v04["v0.4<br/>speech depth"] --> v05["v0.5<br/>analysis + corpus tooling"]
+  v05 --> v06["v0.6<br/>smarter go + chain transforms"]
+
+  v04 --> a["normalization"]
+  v04 --> b["phoneme parsing"]
+  v04 --> c["chip backends"]
+  v04 --> d["timeline + analysis export"]
+
+  v05 --> e["batch analysis"]
+  v05 --> f["timelines + spectrograms"]
+  v05 --> g["comparison reports"]
+
+  v06 --> h["multiband uglification"]
+  v06 --> i["adaptive effect ordering"]
+  v06 --> j["recipe export"]
+```
 
 ### Near-term milestones
 
