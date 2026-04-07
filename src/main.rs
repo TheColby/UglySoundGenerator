@@ -5,6 +5,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -13,8 +15,8 @@ use usg::{
     DEFAULT_GPU_CRUSH_MIX, DEFAULT_GPU_DRIVE, GoFlavor, OutputEncoding, RenderBackend,
     RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile, SpeechInputMode,
     SpeechIntelligibility, SpeechOscillator, SpeechRenderOptions, Style, SurroundLayout,
-    Trajectory, UglinessContour, analyze_wav_with_options, available_effects, available_styles,
-    backend_capabilities, backend_status_report, default_jobs,
+    TimelineOptions, Trajectory, UglinessContour, analyze_wav_timeline, analyze_wav_with_options,
+    available_effects, available_styles, backend_capabilities, backend_status_report, default_jobs,
     go_ugly_file_with_engine_contour_encoding, go_ugly_upmix_file_with_engine_contour_encoding,
     parse_chain_stage, point_to_xyz, render_chain_to_wav_with_engine,
     render_speech_with_artifacts_to_wav_with_engine, render_to_wav_with_engine,
@@ -58,6 +60,12 @@ enum Command {
     Benchmark(BenchmarkArgs),
     /// Generate a large library of ugly files in one run.
     Marathon(MarathonArgs),
+    /// Apply random ugly mutations to an input WAV and rank by ugliness delta.
+    Mutate(MutateArgs),
+    /// Force every WAV in a directory to a target ugliness level.
+    NormalizePack(NormalizePackArgs),
+    /// Breed uglier renders across generations using a genetic algorithm.
+    Evolve(EvolveArgs),
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -116,6 +124,9 @@ struct RenderArgs {
     /// Parallel worker count (0 = auto).
     #[arg(long, default_value_t = 0)]
     jobs: usize,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -346,6 +357,9 @@ struct SpeechArgs {
     /// Optional JSON path for phoneme timeline export.
     #[arg(long)]
     timeline_json: Option<PathBuf>,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -444,6 +458,13 @@ struct SpeechPackArgs {
     /// GPU post-FX blend between dry and crushed signal (0..1).
     #[arg(long)]
     gpu_crush_mix: Option<f64>,
+
+    /// Seed stride between adjacent profiles.
+    #[arg(long, default_value_t = 1)]
+    seed_stride: u64,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -470,6 +491,179 @@ struct AnalyzeArgs {
     /// Also compute the joke UglierBasis score and breakdown.
     #[arg(long)]
     joke: bool,
+
+    /// Emit per-window ugliness timeline instead of whole-file analysis.
+    #[arg(long)]
+    timeline: bool,
+
+    /// Timeline window length in milliseconds.
+    #[arg(long, default_value_t = 50.0)]
+    timeline_window_ms: f64,
+
+    /// Timeline hop (step) between windows in milliseconds.
+    #[arg(long, default_value_t = 25.0)]
+    timeline_hop_ms: f64,
+
+    /// Timeline output format.
+    #[arg(long, value_enum, default_value_t = TimelineFormatArg::Json)]
+    timeline_format: TimelineFormatArg,
+
+    /// Write timeline to this file instead of stdout.
+    #[arg(long)]
+    timeline_output: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct MutateArgs {
+    /// Input WAV file to mutate.
+    input: PathBuf,
+
+    /// Directory to write mutated variants and summary.
+    #[arg(long, default_value = "out/mutate")]
+    out_dir: PathBuf,
+
+    /// Number of random mutations to generate.
+    #[arg(long, default_value_t = 8)]
+    count: usize,
+
+    /// Minimum ugliness level applied per mutation.
+    #[arg(long, default_value_t = 400)]
+    level_min: u16,
+
+    /// Maximum ugliness level applied per mutation.
+    #[arg(long, default_value_t = 950)]
+    level_max: u16,
+
+    /// Optional seed for reproducible mutations.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Analysis model for scoring mutations.
+    #[arg(long, value_enum, default_value_t = AnalyzeModelArg::Psycho)]
+    model: AnalyzeModelArg,
+
+    /// FFT size for psycho model.
+    #[arg(long, default_value_t = 2048)]
+    fft_size: usize,
+
+    /// Hop size for psycho model.
+    #[arg(long, default_value_t = 512)]
+    hop_size: usize,
+
+    /// Normalize peak to this dBFS target.
+    #[arg(long, default_value_t = -0.3)]
+    normalize_dbfs: f64,
+
+    #[command(flatten)]
+    output_format: OutputFormatArgs,
+
+    /// Rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
+    backend: RenderBackendArg,
+
+    /// Parallel worker count (0 = auto).
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct NormalizePackArgs {
+    /// Directory containing WAV files to normalize.
+    #[arg(long)]
+    in_dir: PathBuf,
+
+    /// Directory to write normalized output files.
+    #[arg(long, default_value = "out/normalized")]
+    out_dir: PathBuf,
+
+    /// Target ugliness level (1..1000).
+    #[arg(long, value_parser = clap::value_parser!(u16).range(1..=1000), default_value_t = 700)]
+    level: u16,
+
+    /// Go flavor to apply.
+    #[arg(long = "type", value_enum)]
+    flavor: Option<GoFlavorArg>,
+
+    /// Optional seed.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Analysis model for pre/post scoring.
+    #[arg(long, value_enum, default_value_t = AnalyzeModelArg::Basic)]
+    model: AnalyzeModelArg,
+
+    /// Normalize peak to this dBFS target.
+    #[arg(long, default_value_t = -0.3)]
+    normalize_dbfs: f64,
+
+    #[command(flatten)]
+    output_format: OutputFormatArgs,
+
+    /// Rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
+    backend: RenderBackendArg,
+
+    /// Parallel worker count (0 = auto).
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct EvolveArgs {
+    /// Output directory for all generation files and lineage.
+    #[arg(long, default_value = "out/evolve")]
+    out_dir: PathBuf,
+
+    /// Render style to evolve (default: all styles rotated).
+    #[arg(long, value_enum)]
+    style: Option<StyleArg>,
+
+    /// Duration in seconds per render.
+    #[arg(short = 'd', long, default_value_t = 1.0)]
+    duration: f64,
+
+    /// Sample rate in Hz.
+    #[arg(short = 'r', long, default_value_t = 44_100)]
+    sample_rate: u32,
+
+    /// Number of individuals per generation.
+    #[arg(long, default_value_t = 8)]
+    population: usize,
+
+    /// Number of generations to run.
+    #[arg(long, default_value_t = 5)]
+    generations: usize,
+
+    /// Analysis model for fitness scoring.
+    #[arg(long, value_enum, default_value_t = AnalyzeModelArg::Psycho)]
+    model: AnalyzeModelArg,
+
+    /// FFT size for psycho model.
+    #[arg(long, default_value_t = 2048)]
+    fft_size: usize,
+
+    /// Hop size for psycho model.
+    #[arg(long, default_value_t = 512)]
+    hop_size: usize,
+
+    /// Base seed for generation 0.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Output gain.
+    #[arg(long, default_value_t = 0.8)]
+    gain: f64,
+
+    /// Rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
+    backend: RenderBackendArg,
+
+    /// Parallel worker count (0 = auto).
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+
+    #[command(flatten)]
+    output_format: OutputFormatArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -555,6 +749,9 @@ struct GoArgs {
     /// Parallel worker count (0 = auto).
     #[arg(long, default_value_t = 0)]
     jobs: usize,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -642,6 +839,13 @@ struct RenderPackArgs {
     /// GPU post-FX blend between dry and crushed signal (0..1).
     #[arg(long)]
     gpu_crush_mix: Option<f64>,
+
+    /// Seed stride between adjacent styles.
+    #[arg(long, default_value_t = 1)]
+    seed_stride: u64,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -708,6 +912,9 @@ struct ChainArgs {
     /// GPU post-FX blend between dry and crushed signal (0..1).
     #[arg(long)]
     gpu_crush_mix: Option<f64>,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -770,6 +977,13 @@ struct BenchmarkArgs {
     /// Optional CSV benchmark ranking.
     #[arg(long)]
     csv_output: Option<PathBuf>,
+
+    /// Seed stride between adjacent benchmark runs.
+    #[arg(long, default_value_t = 1)]
+    seed_stride: u64,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -859,6 +1073,48 @@ struct MarathonArgs {
     /// Optional manifest path (default: <out-dir>/manifest.json).
     #[arg(long)]
     manifest: Option<PathBuf>,
+
+    /// Seed stride between adjacent marathon slots.
+    #[arg(long, default_value_t = 1)]
+    seed_stride: u64,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct RandomnessArgs {
+    /// Add a deterministic offset to the chosen seed before rendering.
+    #[arg(long, default_value_t = 0)]
+    seed_offset: u64,
+
+    /// Mix an extra deterministic salt into the chosen seed.
+    #[arg(long, default_value_t = 0)]
+    seed_salt: u64,
+
+    /// Re-mix the seed this many extra times.
+    #[arg(long, default_value_t = 0)]
+    seed_rerolls: u32,
+
+    /// Master amount of parameter randomization (0 = off).
+    #[arg(long, default_value_t = 0.0)]
+    randomness: f64,
+
+    /// How much randomized timing/pace variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    timing_randomness: f64,
+
+    /// How much randomized pitch/formant/spectral variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    spectral_randomness: f64,
+
+    /// How much randomized gain/drive/level variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    amplitude_randomness: f64,
+
+    /// How much randomized density/probability variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    density_randomness: f64,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -933,6 +1189,12 @@ enum SpeechInputModeArg {
 enum AnalyzeModelArg {
     Basic,
     Psycho,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum TimelineFormatArg {
+    Json,
+    Csv,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -1150,10 +1412,14 @@ fn main() -> Result<()> {
         Command::Presets(args) => presets(args),
         Command::Benchmark(args) => benchmark(args),
         Command::Marathon(args) => marathon(args),
+        Command::Mutate(args) => mutate(args),
+        Command::NormalizePack(args) => normalize_pack(args),
+        Command::Evolve(args) => evolve(args),
     }
 }
 
 fn render(args: RenderArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let engine = engine_from_args(
         args.backend,
@@ -1165,13 +1431,14 @@ fn render(args: RenderArgs) -> Result<()> {
     let options = RenderOptions {
         duration: args.duration,
         sample_rate: args.sample_rate,
-        seed: args.seed,
+        seed: Some(apply_seed_controls(args.seed, randomness)),
         style: args.style.into(),
         gain: args.gain,
         normalize: !args.no_normalize,
         normalize_dbfs: args.normalize_dbfs,
         output_encoding,
     };
+    let options = randomize_render_options(options, randomness);
     let summary = render_to_wav_with_engine(&args.output, &options, &engine)
         .with_context(|| format!("failed to write {}", args.output.display()))?;
 
@@ -1191,6 +1458,7 @@ fn render(args: RenderArgs) -> Result<()> {
 }
 
 fn speech(args: SpeechArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let jobs = if args.jobs == 0 {
         default_jobs()
@@ -1215,7 +1483,7 @@ fn speech(args: SpeechArgs) -> Result<()> {
         text,
         input_mode: args.input_mode.into(),
         sample_rate: args.sample_rate,
-        seed: args.seed,
+        seed: Some(apply_seed_controls(args.seed, randomness)),
         normalize_text: !args.no_normalize_text,
         chip_profile: args.profile.into(),
         primary_osc: args.primary_osc.into(),
@@ -1260,6 +1528,7 @@ fn speech(args: SpeechArgs) -> Result<()> {
         drift: args.drift,
         resampler_grit: args.resampler_grit,
     };
+    let opts = randomize_speech_options(opts, randomness);
     let artifacts = render_speech_with_artifacts_to_wav_with_engine(&args.output, &opts, &engine)?;
     let summary = artifacts.summary.clone();
     println!(
@@ -1317,6 +1586,10 @@ fn speech(args: SpeechArgs) -> Result<()> {
 }
 
 fn analyze(args: AnalyzeArgs) -> Result<()> {
+    if args.timeline {
+        return analyze_timeline(args);
+    }
+
     let options = AnalyzeOptions {
         model: args.model.into(),
         fft_size: args.fft_size,
@@ -1394,6 +1667,492 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
     }
 
     println!("ugly_index: {:.1}/1000", report.selected_ugly_index);
+    Ok(())
+}
+
+fn analyze_timeline(args: AnalyzeArgs) -> Result<()> {
+    let opts = TimelineOptions {
+        window_ms: args.timeline_window_ms,
+        hop_ms: args.timeline_hop_ms,
+    };
+    let frames = analyze_wav_timeline(&args.input, &opts)
+        .with_context(|| format!("failed to compute timeline for {}", args.input.display()))?;
+
+    let emit = |text: String| -> Result<()> {
+        if let Some(path) = &args.timeline_output {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+            fs::write(path, text)?;
+        } else {
+            print!("{}", text);
+        }
+        Ok(())
+    };
+
+    match args.timeline_format {
+        TimelineFormatArg::Json => emit(serde_json::to_string_pretty(&frames)? + "\n"),
+        TimelineFormatArg::Csv => {
+            let mut out =
+                String::from("time_s,ugly_index,clipped_pct,harshness_ratio,zero_crossing_rate\n");
+            for f in &frames {
+                out.push_str(&format!(
+                    "{:.6},{:.6},{:.6},{:.6},{:.6}\n",
+                    f.time_s, f.ugly_index, f.clipped_pct, f.harshness_ratio, f.zero_crossing_rate
+                ));
+            }
+            emit(out)
+        }
+    }
+}
+
+// ── mutate ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+struct MutateEntry {
+    index: usize,
+    flavor: String,
+    level: u16,
+    seed: u64,
+    output: String,
+    ugly_index: f64,
+    ugly_delta: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct MutateSummary {
+    generated_unix_s: u64,
+    input: String,
+    base_ugly_index: f64,
+    model: String,
+    count: usize,
+    entries: Vec<MutateEntry>,
+}
+
+fn mutate(args: MutateArgs) -> Result<()> {
+    let output_encoding = args.output_format.output_encoding()?;
+    let engine = engine_from_args(args.backend, args.jobs, None, None, None);
+    let plan = resolve_backend_plan(&engine)?;
+    let analyze_opts = AnalyzeOptions {
+        model: args.model.into(),
+        fft_size: args.fft_size,
+        hop_size: args.hop_size,
+        joke: false,
+    };
+
+    fs::create_dir_all(&args.out_dir)
+        .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
+
+    let base_analysis = analyze_wav_with_options(&args.input, &analyze_opts)
+        .with_context(|| format!("failed to analyze input {}", args.input.display()))?;
+    let base_ugly = base_analysis.selected_ugly_index;
+
+    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let level_range = (args.level_max.max(args.level_min + 1) - args.level_min) as u64;
+
+    // Deterministic flavors (exclude Random/Lucky so every mutation is named)
+    const FLAVORS: [GoFlavor; 7] = [
+        GoFlavor::Glitch,
+        GoFlavor::Stutter,
+        GoFlavor::Puff,
+        GoFlavor::Punish,
+        GoFlavor::Geek,
+        GoFlavor::DissonanceRing,
+        GoFlavor::DissonanceExpand,
+    ];
+
+    let tasks: Vec<usize> = (0..args.count).collect();
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(plan.jobs)
+        .build()
+        .context("failed to build mutate worker pool")?;
+
+    let results: Vec<Result<MutateEntry>> = pool.install(|| {
+        tasks
+            .par_iter()
+            .map(|&idx| {
+                let mut rng = ChaCha8Rng::seed_from_u64(style_seed(base_seed, idx as u64));
+                let flavor = FLAVORS[rng.gen_range(0..FLAVORS.len())];
+                let level = args.level_min + (rng.gen_range(0..level_range) as u16);
+                let seed = style_seed(base_seed, idx as u64 + 1000);
+                let output =
+                    args.out_dir
+                        .join(format!("{:02}_{}_l{}.wav", idx + 1, flavor.as_str(), level));
+                go_ugly_file_with_engine_contour_encoding(
+                    &args.input,
+                    &output,
+                    level,
+                    Some(flavor),
+                    Some(seed),
+                    true,
+                    args.normalize_dbfs,
+                    None,
+                    None,
+                    output_encoding,
+                    &engine,
+                )
+                .with_context(|| format!("failed to mutate to {}", output.display()))?;
+                let analysis = analyze_wav_with_options(&output, &analyze_opts)
+                    .with_context(|| format!("failed to analyze {}", output.display()))?;
+                Ok(MutateEntry {
+                    index: idx + 1,
+                    flavor: flavor.as_str().to_string(),
+                    level,
+                    seed,
+                    output: output.display().to_string(),
+                    ugly_index: analysis.selected_ugly_index,
+                    ugly_delta: analysis.selected_ugly_index - base_ugly,
+                })
+            })
+            .collect()
+    });
+
+    let mut entries: Vec<MutateEntry> = results.into_iter().collect::<Result<_>>()?;
+    entries.sort_by(|a, b| b.ugly_delta.total_cmp(&a.ugly_delta));
+
+    let summary = MutateSummary {
+        generated_unix_s: now_unix_s(),
+        input: args.input.display().to_string(),
+        base_ugly_index: base_ugly,
+        model: analyze_opts.model.as_str().to_string(),
+        count: entries.len(),
+        entries,
+    };
+
+    let summary_path = args.out_dir.join("mutate_summary.json");
+    write_json(&summary_path, &summary)
+        .with_context(|| format!("failed to write {}", summary_path.display()))?;
+
+    println!(
+        "Mutate: {} variants of {} (base ugly: {:.1}/1000)",
+        summary.count,
+        args.input.display(),
+        summary.base_ugly_index
+    );
+    println!("Top mutations by ugliness delta:");
+    for e in summary.entries.iter().take(5) {
+        println!(
+            "  {:>2}. {:<16} l={:<4} {:>5.1}/1000 (Δ{:+.1})  {}",
+            e.index, e.flavor, e.level, e.ugly_index, e.ugly_delta, e.output
+        );
+    }
+    println!("Summary: {}", summary_path.display());
+    Ok(())
+}
+
+// ── normalize-pack ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+struct NormalizePackEntry {
+    filename: String,
+    input: String,
+    output: String,
+    before_ugly_index: f64,
+    after_ugly_index: f64,
+    target_level: u16,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct NormalizePackSummary {
+    generated_unix_s: u64,
+    in_dir: String,
+    out_dir: String,
+    target_level: u16,
+    model: String,
+    files_processed: usize,
+    entries: Vec<NormalizePackEntry>,
+}
+
+fn normalize_pack(args: NormalizePackArgs) -> Result<()> {
+    let output_encoding = args.output_format.output_encoding()?;
+    let engine = engine_from_args(args.backend, args.jobs, None, None, None);
+    let plan = resolve_backend_plan(&engine)?;
+    let analyze_opts = AnalyzeOptions {
+        model: args.model.into(),
+        fft_size: 2048,
+        hop_size: 512,
+        joke: false,
+    };
+
+    fs::create_dir_all(&args.out_dir)
+        .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
+
+    let wavs: Vec<PathBuf> = fs::read_dir(&args.in_dir)
+        .with_context(|| format!("failed to read {}", args.in_dir.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("wav"))
+        .collect();
+
+    if wavs.is_empty() {
+        println!("No .wav files found in {}", args.in_dir.display());
+        return Ok(());
+    }
+
+    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let flavor: Option<GoFlavor> = args.flavor.map(Into::into);
+
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(plan.jobs)
+        .build()
+        .context("failed to build normalize-pack worker pool")?;
+
+    let results: Vec<Result<NormalizePackEntry>> = pool.install(|| {
+        wavs.par_iter()
+            .enumerate()
+            .map(|(idx, input)| {
+                let fname = input
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown.wav");
+                let output = args.out_dir.join(fname);
+                let seed = style_seed(base_seed, idx as u64);
+
+                let before = analyze_wav_with_options(input, &analyze_opts)
+                    .with_context(|| format!("failed to analyze {}", input.display()))?;
+
+                go_ugly_file_with_engine_contour_encoding(
+                    input,
+                    &output,
+                    args.level,
+                    flavor,
+                    Some(seed),
+                    true,
+                    args.normalize_dbfs,
+                    None,
+                    None,
+                    output_encoding,
+                    &engine,
+                )
+                .with_context(|| format!("failed to normalize {}", input.display()))?;
+
+                let after = analyze_wav_with_options(&output, &analyze_opts)
+                    .with_context(|| format!("failed to analyze {}", output.display()))?;
+
+                Ok(NormalizePackEntry {
+                    filename: fname.to_string(),
+                    input: input.display().to_string(),
+                    output: output.display().to_string(),
+                    before_ugly_index: before.selected_ugly_index,
+                    after_ugly_index: after.selected_ugly_index,
+                    target_level: args.level,
+                })
+            })
+            .collect()
+    });
+
+    let mut entries: Vec<NormalizePackEntry> = results.into_iter().collect::<Result<_>>()?;
+    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+
+    let summary = NormalizePackSummary {
+        generated_unix_s: now_unix_s(),
+        in_dir: args.in_dir.display().to_string(),
+        out_dir: args.out_dir.display().to_string(),
+        target_level: args.level,
+        model: analyze_opts.model.as_str().to_string(),
+        files_processed: entries.len(),
+        entries,
+    };
+
+    let manifest_path = args.out_dir.join("normalize_manifest.json");
+    write_json(&manifest_path, &summary)
+        .with_context(|| format!("failed to write {}", manifest_path.display()))?;
+
+    println!(
+        "normalize-pack: {} files -> {} (target level {})",
+        summary.files_processed,
+        args.out_dir.display(),
+        summary.target_level
+    );
+    for e in &summary.entries {
+        println!(
+            "  {} : {:.1} -> {:.1}/1000",
+            e.filename, e.before_ugly_index, e.after_ugly_index
+        );
+    }
+    println!("Manifest: {}", manifest_path.display());
+    Ok(())
+}
+
+// ── evolve ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+struct EvolveIndividual {
+    generation: usize,
+    index: usize,
+    style: String,
+    seed: u64,
+    ugly_index: f64,
+    output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct EvolveLineage {
+    generations: usize,
+    population: usize,
+    champion_ugly_index: f64,
+    champion_style: String,
+    champion_seed: u64,
+    champion_output: String,
+    all_individuals: Vec<EvolveIndividual>,
+}
+
+fn evolve(args: EvolveArgs) -> Result<()> {
+    let output_encoding = args.output_format.output_encoding()?;
+    let engine = engine_from_args(args.backend, args.jobs, None, None, None);
+    let plan = resolve_backend_plan(&engine)?;
+    let analyze_opts = AnalyzeOptions {
+        model: args.model.into(),
+        fft_size: args.fft_size,
+        hop_size: args.hop_size,
+        joke: false,
+    };
+
+    fs::create_dir_all(&args.out_dir)
+        .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
+
+    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let styles: Vec<Style> = if let Some(s) = args.style {
+        vec![s.into()]
+    } else {
+        Style::ALL.to_vec()
+    };
+
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(plan.jobs)
+        .build()
+        .context("failed to build evolve worker pool")?;
+
+    let mut population: Vec<(Style, u64)> = (0..args.population)
+        .map(|i| {
+            let style = styles[i % styles.len()];
+            let seed = style_seed(base_seed, i as u64);
+            (style, seed)
+        })
+        .collect();
+
+    let mut all_individuals: Vec<EvolveIndividual> = Vec::new();
+
+    for generation in 0..args.generations {
+        let gen_dir = args.out_dir.join(format!("gen{:02}", generation + 1));
+        fs::create_dir_all(&gen_dir)?;
+
+        let tasks: Vec<(usize, Style, u64)> = population
+            .iter()
+            .enumerate()
+            .map(|(i, &(s, seed))| (i, s, seed))
+            .collect();
+
+        let mut scored: Vec<(usize, Style, u64, f64, String)> = pool.install(|| {
+            tasks
+                .par_iter()
+                .map(|(idx, style, seed)| {
+                    let output = gen_dir.join(format!(
+                        "{:02}_{}_s{}.wav",
+                        idx + 1,
+                        style.as_str(),
+                        seed % 99999
+                    ));
+                    let render_opts = RenderOptions {
+                        duration: args.duration,
+                        sample_rate: args.sample_rate,
+                        seed: Some(*seed),
+                        style: *style,
+                        gain: args.gain,
+                        normalize: true,
+                        normalize_dbfs: -0.3,
+                        output_encoding,
+                    };
+                    render_to_wav_with_engine(&output, &render_opts, &engine)
+                        .with_context(|| format!("failed to render {}", output.display()))?;
+                    let analysis = analyze_wav_with_options(&output, &analyze_opts)
+                        .with_context(|| format!("failed to analyze {}", output.display()))?;
+                    Ok((
+                        *idx,
+                        *style,
+                        *seed,
+                        analysis.selected_ugly_index,
+                        output.display().to_string(),
+                    ))
+                })
+                .collect::<Vec<Result<_>>>()
+                .into_iter()
+                .collect::<Result<Vec<_>>>()
+        })?;
+
+        scored.sort_by(|a, b| b.3.total_cmp(&a.3));
+
+        for (i, (idx, style, seed, ugly, output)) in scored.iter().enumerate() {
+            all_individuals.push(EvolveIndividual {
+                generation: generation + 1,
+                index: idx + 1,
+                style: style.as_str().to_string(),
+                seed: *seed,
+                ugly_index: *ugly,
+                output: output.clone(),
+            });
+            println!(
+                "gen{:02} {:>2}. {:<12} ugly={:.1}/1000  seed={}",
+                generation + 1,
+                i + 1,
+                style.as_str(),
+                ugly,
+                seed
+            );
+        }
+
+        // Breed: keep top half, derive offspring by XOR-mutating seeds
+        let elite_count = (args.population / 2).max(1);
+        let elites: Vec<(Style, u64)> = scored[..elite_count]
+            .iter()
+            .map(|(_, s, seed, _, _)| (*s, *seed))
+            .collect();
+
+        let mut next_gen: Vec<(Style, u64)> = elites.clone();
+        let mut rng = ChaCha8Rng::seed_from_u64(style_seed(base_seed, generation as u64 + 9999));
+        while next_gen.len() < args.population {
+            let (parent_style, parent_seed) = elites[next_gen.len() % elites.len()];
+            let mutation: u64 = rng.gen_range(1u64..=0xFFFF);
+            let child_seed = parent_seed ^ mutation;
+            // Occasionally mutate the style too
+            let child_style = if rng.gen_bool(0.3) {
+                styles[rng.gen_range(0..styles.len())]
+            } else {
+                parent_style
+            };
+            next_gen.push((child_style, child_seed));
+        }
+        population = next_gen;
+    }
+
+    let champion = all_individuals
+        .iter()
+        .max_by(|a, b| a.ugly_index.total_cmp(&b.ugly_index))
+        .cloned()
+        .expect("no individuals");
+
+    let lineage = EvolveLineage {
+        generations: args.generations,
+        population: args.population,
+        champion_ugly_index: champion.ugly_index,
+        champion_style: champion.style.clone(),
+        champion_seed: champion.seed,
+        champion_output: champion.output.clone(),
+        all_individuals,
+    };
+
+    let lineage_path = args.out_dir.join("lineage.json");
+    write_json(&lineage_path, &lineage)
+        .with_context(|| format!("failed to write {}", lineage_path.display()))?;
+
+    println!(
+        "\nChampion: {} seed={} ugly={:.1}/1000",
+        lineage.champion_style, lineage.champion_seed, lineage.champion_ugly_index
+    );
+    println!("  -> {}", lineage.champion_output);
+    println!("Lineage: {}", lineage_path.display());
     Ok(())
 }
 
@@ -1563,7 +2322,35 @@ struct MarathonManifest {
     entries: Vec<MarathonEntry>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RandomnessControls {
+    seed_offset: u64,
+    seed_salt: u64,
+    seed_rerolls: u32,
+    randomness: f64,
+    timing_randomness: f64,
+    spectral_randomness: f64,
+    amplitude_randomness: f64,
+    density_randomness: f64,
+}
+
+impl From<&RandomnessArgs> for RandomnessControls {
+    fn from(value: &RandomnessArgs) -> Self {
+        Self {
+            seed_offset: value.seed_offset,
+            seed_salt: value.seed_salt,
+            seed_rerolls: value.seed_rerolls,
+            randomness: value.randomness.max(0.0),
+            timing_randomness: value.timing_randomness.max(0.0),
+            spectral_randomness: value.spectral_randomness.max(0.0),
+            amplitude_randomness: value.amplitude_randomness.max(0.0),
+            density_randomness: value.density_randomness.max(0.0),
+        }
+    }
+}
+
 fn speech_pack(args: SpeechPackArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let text = if let Some(path) = args.text_file {
         fs::read_to_string(&path)
@@ -1589,7 +2376,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
     fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
 
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let profiles = SpeechChipProfile::ALL;
     let tasks: Vec<(usize, SpeechChipProfile)> = profiles.iter().copied().enumerate().collect();
     let rank_by = match args.rank_by {
@@ -1607,7 +2394,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
         tasks
             .par_iter()
             .map(|(idx, profile)| {
-                let seed = style_seed(base_seed, *idx as u64);
+                let seed = derived_batch_seed(base_seed, *idx as u64, args.seed_stride);
                 let output = args
                     .out_dir
                     .join(format!("{:02}_{}.wav", *idx + 1, profile.as_str()));
@@ -1624,6 +2411,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
                     output_encoding,
                     ..SpeechRenderOptions::default()
                 };
+                let opts = randomize_speech_options(opts, randomness);
                 let artifacts =
                     render_speech_with_artifacts_to_wav_with_engine(&output, &opts, &engine)
                         .with_context(|| format!("failed to render {}", output.display()))?;
@@ -1730,6 +2518,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
 }
 
 fn render_pack(args: RenderPackArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let analyze_options = AnalyzeOptions {
         model: args.model.into(),
@@ -1748,7 +2537,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
     fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
 
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let styles_to_render = selected_pack_styles(&args.styles);
     let tasks: Vec<(usize, Style)> = styles_to_render.iter().copied().enumerate().collect();
     let pool = ThreadPoolBuilder::new()
@@ -1759,7 +2548,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
         tasks
             .par_iter()
             .map(|(idx, style)| {
-                let seed = style_seed(base_seed, *idx as u64);
+                let seed = derived_batch_seed(base_seed, *idx as u64, args.seed_stride);
                 let output = args
                     .out_dir
                     .join(format!("{:02}_{}.wav", *idx + 1, style.as_str()));
@@ -1773,6 +2562,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
                     normalize_dbfs: args.normalize_dbfs,
                     output_encoding,
                 };
+                let render_options = randomize_render_options(render_options, randomness);
                 render_to_wav_with_engine(&output, &render_options, &engine)
                     .with_context(|| format!("failed to render {}", output.display()))?;
                 let analysis = analyze_wav_with_options(&output, &analyze_options)
@@ -1872,6 +2662,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
 }
 
 fn go(args: GoArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let engine = engine_from_args(
         args.backend,
@@ -1885,6 +2676,9 @@ fn go(args: GoArgs) -> Result<()> {
         .output
         .unwrap_or_else(|| default_go_output_path(&args.input));
     let flavor = args.flavor.map(Into::into);
+    let seed = apply_seed_controls(args.seed, randomness);
+    let level = randomize_go_level(args.level, randomness, seed);
+    let normalize_dbfs = randomize_normalize_dbfs(args.normalize_dbfs, randomness, seed);
 
     let summary = if let Some(layout_text) = args.upmix.as_ref() {
         let layout = parse_surround_layout(layout_text)?;
@@ -1902,11 +2696,11 @@ fn go(args: GoArgs) -> Result<()> {
         go_ugly_upmix_file_with_engine_contour_encoding(
             &args.input,
             &output,
-            args.level,
+            level,
             flavor,
-            args.seed,
+            Some(seed),
             !args.no_normalize,
-            args.normalize_dbfs,
+            normalize_dbfs,
             spatial,
             contour.as_ref(),
             Some(args.sample_rate),
@@ -1917,11 +2711,11 @@ fn go(args: GoArgs) -> Result<()> {
         go_ugly_file_with_engine_contour_encoding(
             &args.input,
             &output,
-            args.level,
+            level,
             flavor,
-            args.seed,
+            Some(seed),
             !args.no_normalize,
-            args.normalize_dbfs,
+            normalize_dbfs,
             contour.as_ref(),
             Some(args.sample_rate),
             output_encoding,
@@ -1958,6 +2752,7 @@ fn go(args: GoArgs) -> Result<()> {
 }
 
 fn chain(args: ChainArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let engine = engine_from_args(
         args.backend,
@@ -1966,7 +2761,7 @@ fn chain(args: ChainArgs) -> Result<()> {
         args.gpu_crush_bits,
         args.gpu_crush_mix,
     );
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let mut stage_tokens = Vec::new();
     if let Some(preset_name) = args.preset.as_ref() {
         let preset = load_chain_preset(preset_name)?;
@@ -1995,12 +2790,16 @@ fn chain(args: ChainArgs) -> Result<()> {
     let frames = render_chain_to_wav_with_engine(
         &args.output,
         &parsed,
-        args.duration,
+        randomize_duration(args.duration, randomness, base_seed),
         args.sample_rate,
         output_encoding,
-        args.gain,
+        randomize_gain(args.gain, randomness, derived_seed_label(base_seed, 0xC1A1)),
         !args.no_normalize,
-        args.normalize_dbfs,
+        randomize_normalize_dbfs(
+            args.normalize_dbfs,
+            randomness,
+            derived_seed_label(base_seed, 0xC1A2),
+        ),
         base_seed,
         &engine,
     )?;
@@ -2160,6 +2959,7 @@ fn presets(args: PresetsArgs) -> Result<()> {
 }
 
 fn benchmark(args: BenchmarkArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let runs = args.runs.max(1);
     let jobs = if args.jobs == 0 {
@@ -2167,7 +2967,7 @@ fn benchmark(args: BenchmarkArgs) -> Result<()> {
     } else {
         args.jobs
     };
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let caps = backend_capabilities();
 
     let mut backends = vec![RenderBackend::Cpu];
@@ -2206,13 +3006,29 @@ fn benchmark(args: BenchmarkArgs) -> Result<()> {
                 run_idx
             ));
             let opts = RenderOptions {
-                duration: args.duration,
+                duration: randomize_duration(
+                    args.duration,
+                    randomness,
+                    derived_batch_seed(base_seed, run_idx as u64, args.seed_stride),
+                ),
                 sample_rate: args.sample_rate,
-                seed: Some(style_seed(base_seed, run_idx as u64)),
+                seed: Some(derived_batch_seed(
+                    base_seed,
+                    run_idx as u64,
+                    args.seed_stride,
+                )),
                 style: args.style.into(),
-                gain: args.gain,
+                gain: randomize_gain(
+                    args.gain,
+                    randomness,
+                    derived_seed_label(base_seed, run_idx as u64 ^ 0xB00B),
+                ),
                 normalize: !args.no_normalize,
-                normalize_dbfs: args.normalize_dbfs,
+                normalize_dbfs: randomize_normalize_dbfs(
+                    args.normalize_dbfs,
+                    randomness,
+                    derived_seed_label(base_seed, run_idx as u64 ^ 0xB00C),
+                ),
                 output_encoding,
             };
             let t0 = Instant::now();
@@ -2312,6 +3128,7 @@ fn benchmark(args: BenchmarkArgs) -> Result<()> {
 }
 
 fn marathon(args: MarathonArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     if args.count == 0 {
         return Err(anyhow::anyhow!("count must be >= 1"));
@@ -2330,7 +3147,7 @@ fn marathon(args: MarathonArgs) -> Result<()> {
         return Err(anyhow::anyhow!("no styles selected"));
     }
 
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let engine = engine_from_args(
         args.backend,
         args.jobs,
@@ -2349,7 +3166,7 @@ fn marathon(args: MarathonArgs) -> Result<()> {
         tasks
             .par_iter()
             .map(|idx| {
-                let slot_seed = style_seed(base_seed, *idx as u64);
+                let slot_seed = derived_batch_seed(base_seed, *idx as u64, args.seed_stride);
                 let style = styles[*idx % styles.len()];
                 let duration = duration_for_slot(slot_seed, args.min_duration, args.max_duration);
                 let output = args.out_dir.join(format!(
@@ -2358,13 +3175,21 @@ fn marathon(args: MarathonArgs) -> Result<()> {
                     style.as_str()
                 ));
                 let opts = RenderOptions {
-                    duration,
+                    duration: randomize_duration(duration, randomness, slot_seed),
                     sample_rate: args.sample_rate,
                     seed: Some(slot_seed),
                     style,
-                    gain: args.gain,
+                    gain: randomize_gain(
+                        args.gain,
+                        randomness,
+                        derived_seed_label(slot_seed, 0xA11C),
+                    ),
                     normalize: !args.no_normalize,
-                    normalize_dbfs: args.normalize_dbfs,
+                    normalize_dbfs: randomize_normalize_dbfs(
+                        args.normalize_dbfs,
+                        randomness,
+                        derived_seed_label(slot_seed, 0xA11D),
+                    ),
                     output_encoding,
                 };
                 render_to_wav_with_engine(&output, &opts, &engine)
@@ -2440,6 +3265,206 @@ fn duration_for_slot(seed: u64, min_duration: f64, max_duration: f64) -> f64 {
     }
     let unit = ((seed >> 11) as f64) / ((1_u64 << 53) as f64);
     min_duration + (max_duration - min_duration) * unit.clamp(0.0, 1.0)
+}
+
+fn apply_seed_controls(seed: Option<u64>, randomness: RandomnessControls) -> u64 {
+    let mut mixed = seed
+        .unwrap_or_else(seed_from_time)
+        .wrapping_add(randomness.seed_offset);
+    mixed = style_seed(mixed, randomness.seed_salt);
+    for reroll_idx in 0..randomness.seed_rerolls {
+        mixed = style_seed(
+            mixed,
+            randomness.seed_salt ^ ((reroll_idx as u64 + 1).wrapping_mul(0x9E37_79B9)),
+        );
+    }
+    mixed
+}
+
+fn derived_batch_seed(base_seed: u64, idx: u64, stride: u64) -> u64 {
+    style_seed(base_seed, idx.wrapping_mul(stride.max(1)))
+}
+
+fn derived_seed_label(base_seed: u64, label: u64) -> u64 {
+    style_seed(base_seed, label)
+}
+
+fn randomness_amount(master: f64, specific: f64) -> f64 {
+    (master.max(0.0) * specific.max(0.0)).clamp(0.0, 1.0)
+}
+
+fn symmetric_factor(seed: u64, amount: f64, span: f64) -> f64 {
+    if amount <= 0.0 {
+        return 1.0;
+    }
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    1.0 + rng.gen_range(-span..=span) * amount
+}
+
+fn symmetric_add(seed: u64, amount: f64, span: f64) -> f64 {
+    if amount <= 0.0 {
+        return 0.0;
+    }
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    rng.gen_range(-span..=span) * amount
+}
+
+fn randomize_duration(duration: f64, randomness: RandomnessControls, seed: u64) -> f64 {
+    (duration
+        * symmetric_factor(
+            seed,
+            randomness_amount(randomness.randomness, randomness.timing_randomness),
+            0.35,
+        ))
+    .clamp(0.1, 86_400.0)
+}
+
+fn randomize_gain(gain: f64, randomness: RandomnessControls, seed: u64) -> f64 {
+    (gain
+        * symmetric_factor(
+            seed,
+            randomness_amount(randomness.randomness, randomness.amplitude_randomness),
+            0.30,
+        ))
+    .clamp(0.0, 1.0)
+}
+
+fn randomize_normalize_dbfs(dbfs: f64, randomness: RandomnessControls, seed: u64) -> f64 {
+    (dbfs
+        + symmetric_add(
+            seed,
+            randomness_amount(randomness.randomness, randomness.amplitude_randomness),
+            1.25,
+        ))
+    .clamp(-24.0, 0.0)
+}
+
+fn randomize_render_options(
+    mut opts: RenderOptions,
+    randomness: RandomnessControls,
+) -> RenderOptions {
+    let seed = opts.seed.unwrap_or_else(seed_from_time);
+    opts.duration = randomize_duration(opts.duration, randomness, derived_seed_label(seed, 0x5101));
+    opts.gain = randomize_gain(opts.gain, randomness, derived_seed_label(seed, 0x5102));
+    opts.normalize_dbfs = randomize_normalize_dbfs(
+        opts.normalize_dbfs,
+        randomness,
+        derived_seed_label(seed, 0x5103),
+    );
+    opts
+}
+
+fn randomize_speech_options(
+    mut opts: SpeechRenderOptions,
+    randomness: RandomnessControls,
+) -> SpeechRenderOptions {
+    let seed = opts.seed.unwrap_or_else(seed_from_time);
+    let timing = randomness_amount(randomness.randomness, randomness.timing_randomness);
+    let spectral = randomness_amount(randomness.randomness, randomness.spectral_randomness);
+    let amplitude = randomness_amount(randomness.randomness, randomness.amplitude_randomness);
+    let density = randomness_amount(randomness.randomness, randomness.density_randomness);
+
+    opts.units_per_second = (opts.units_per_second
+        * symmetric_factor(derived_seed_label(seed, 0x5201), timing, 0.45))
+    .clamp(1.0, 40.0);
+    opts.pitch_hz = (opts.pitch_hz
+        * symmetric_factor(derived_seed_label(seed, 0x5202), spectral, 0.35))
+    .clamp(20.0, 2400.0);
+    opts.pitch_jitter = (opts.pitch_jitter
+        + symmetric_add(derived_seed_label(seed, 0x5203), timing, 0.18))
+    .clamp(0.0, 1.0);
+    opts.vibrato_hz = (opts.vibrato_hz
+        * symmetric_factor(derived_seed_label(seed, 0x5204), timing, 0.4))
+    .clamp(0.0, 20.0);
+    opts.vibrato_depth = (opts.vibrato_depth
+        + symmetric_add(derived_seed_label(seed, 0x5205), timing, 0.12))
+    .clamp(0.0, 1.0);
+    opts.formant_shift = (opts.formant_shift
+        + symmetric_add(derived_seed_label(seed, 0x5206), spectral, 0.6))
+    .clamp(0.2, 3.5);
+    opts.consonant_noise = (opts.consonant_noise
+        + symmetric_add(derived_seed_label(seed, 0x5207), density, 0.35))
+    .clamp(0.0, 2.0);
+    opts.vowel_mix = (opts.vowel_mix
+        + symmetric_add(derived_seed_label(seed, 0x5208), spectral, 0.28))
+    .clamp(0.0, 1.5);
+    opts.hiss = (opts.hiss + symmetric_add(derived_seed_label(seed, 0x5209), amplitude, 0.18))
+        .clamp(0.0, 2.5);
+    opts.buzz = (opts.buzz + symmetric_add(derived_seed_label(seed, 0x5210), amplitude, 0.35))
+        .clamp(0.0, 2.5);
+    opts.fold = (opts.fold * symmetric_factor(derived_seed_label(seed, 0x5211), spectral, 0.45))
+        .clamp(0.5, 16.0);
+    opts.chaos = (opts.chaos + symmetric_add(derived_seed_label(seed, 0x5212), density, 0.45))
+        .clamp(0.0, 2.0);
+    opts.robotize = (opts.robotize
+        + symmetric_add(derived_seed_label(seed, 0x5213), spectral, 0.3))
+    .clamp(0.0, 1.5);
+    opts.glide =
+        (opts.glide + symmetric_add(derived_seed_label(seed, 0x5214), timing, 0.2)).clamp(0.0, 1.5);
+    opts.emphasis = (opts.emphasis
+        + symmetric_add(derived_seed_label(seed, 0x5215), amplitude, 0.35))
+    .clamp(0.0, 2.0);
+    opts.word_accent = (opts.word_accent
+        + symmetric_add(derived_seed_label(seed, 0x5216), timing, 0.25))
+    .clamp(0.0, 1.0);
+    opts.sentence_lilt = (opts.sentence_lilt
+        + symmetric_add(derived_seed_label(seed, 0x5217), timing, 0.25))
+    .clamp(0.0, 1.0);
+    opts.paragraph_decline = (opts.paragraph_decline
+        + symmetric_add(derived_seed_label(seed, 0x5218), timing, 0.2))
+    .clamp(0.0, 1.0);
+    opts.word_gap_ms = (opts.word_gap_ms
+        * symmetric_factor(derived_seed_label(seed, 0x5219), timing, 0.5))
+    .clamp(0.0, 500.0);
+    opts.sentence_gap_ms = (opts.sentence_gap_ms
+        * symmetric_factor(derived_seed_label(seed, 0x5220), timing, 0.6))
+    .clamp(0.0, 1500.0);
+    opts.paragraph_gap_ms = (opts.paragraph_gap_ms
+        * symmetric_factor(derived_seed_label(seed, 0x5221), timing, 0.6))
+    .clamp(0.0, 3000.0);
+    opts.attack_ms = (opts.attack_ms
+        * symmetric_factor(derived_seed_label(seed, 0x5222), timing, 0.45))
+    .clamp(0.0, 200.0);
+    opts.release_ms = (opts.release_ms
+        * symmetric_factor(derived_seed_label(seed, 0x5223), timing, 0.45))
+    .clamp(0.0, 500.0);
+    opts.bitcrush_bits = (opts.bitcrush_bits
+        + symmetric_add(derived_seed_label(seed, 0x5224), spectral, 2.0))
+    .clamp(1.0, 24.0);
+    opts.sample_hold_hz = (opts.sample_hold_hz
+        * symmetric_factor(derived_seed_label(seed, 0x5225), density, 0.55))
+    .clamp(500.0, 96_000.0);
+    opts.ring_mix = (opts.ring_mix
+        + symmetric_add(derived_seed_label(seed, 0x5226), amplitude, 0.18))
+    .clamp(0.0, 1.0);
+    opts.sub_mix = (opts.sub_mix
+        + symmetric_add(derived_seed_label(seed, 0x5227), amplitude, 0.15))
+    .clamp(0.0, 1.0);
+    opts.nasal = (opts.nasal + symmetric_add(derived_seed_label(seed, 0x5228), spectral, 0.15))
+        .clamp(0.0, 1.0);
+    opts.throat = (opts.throat + symmetric_add(derived_seed_label(seed, 0x5229), amplitude, 0.15))
+        .clamp(0.0, 1.0);
+    opts.drift = (opts.drift + symmetric_add(derived_seed_label(seed, 0x5230), timing, 0.16))
+        .clamp(0.0, 1.0);
+    opts.resampler_grit = (opts.resampler_grit
+        + symmetric_add(derived_seed_label(seed, 0x5231), density, 0.25))
+    .clamp(0.0, 1.0);
+    opts.gain = randomize_gain(opts.gain, randomness, derived_seed_label(seed, 0x5232));
+    opts.normalize_dbfs = randomize_normalize_dbfs(
+        opts.normalize_dbfs,
+        randomness,
+        derived_seed_label(seed, 0x5233),
+    );
+    opts
+}
+
+fn randomize_go_level(level: u16, randomness: RandomnessControls, seed: u64) -> u16 {
+    let delta = symmetric_add(
+        derived_seed_label(seed, 0x5301),
+        randomness_amount(randomness.randomness, randomness.amplitude_randomness),
+        160.0,
+    );
+    (level as f64 + delta).round().clamp(1.0, 1000.0) as u16
 }
 
 fn engine_from_args(

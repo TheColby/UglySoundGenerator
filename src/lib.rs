@@ -2302,6 +2302,74 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
     })
 }
 
+/// Options for windowed ugliness timeline analysis.
+#[derive(Debug, Clone)]
+pub struct TimelineOptions {
+    /// Analysis window length in milliseconds.
+    pub window_ms: f64,
+    /// Hop (step) between windows in milliseconds.
+    pub hop_ms: f64,
+}
+
+impl Default for TimelineOptions {
+    fn default() -> Self {
+        Self {
+            window_ms: 50.0,
+            hop_ms: 25.0,
+        }
+    }
+}
+
+/// One windowed ugliness measurement at a point in time.
+#[derive(Debug, Clone, Serialize)]
+pub struct TimelineFrame {
+    /// Start time of this window in seconds.
+    pub time_s: f64,
+    /// Basic ugly_index for this window.
+    pub ugly_index: f64,
+    /// Clipped sample percentage in this window.
+    pub clipped_pct: f64,
+    /// Harshness ratio in this window.
+    pub harshness_ratio: f64,
+    /// Zero-crossing rate in this window.
+    pub zero_crossing_rate: f64,
+}
+
+/// Compute per-window ugliness over the file.
+pub fn analyze_wav_timeline(path: &Path, opts: &TimelineOptions) -> Result<Vec<TimelineFrame>> {
+    if opts.window_ms < 1.0 {
+        return Err(anyhow!("timeline window_ms must be >= 1.0"));
+    }
+    if opts.hop_ms < 1.0 {
+        return Err(anyhow!("timeline hop_ms must be >= 1.0"));
+    }
+    let (channel_data, sample_rate, channels) = read_wav_channels_f64(path)?;
+    if channel_data.is_empty() || channel_data[0].is_empty() {
+        return Err(anyhow!("input had no audio samples"));
+    }
+    let mono = mixdown_mono(&channel_data);
+    let sr = sample_rate as f64;
+    let win_frames = ((opts.window_ms * 0.001 * sr) as usize).max(2);
+    let hop_frames = ((opts.hop_ms * 0.001 * sr) as usize).max(1);
+    let total = mono.len();
+    let mut frames = Vec::new();
+    let mut pos = 0usize;
+    while pos < total {
+        let end = (pos + win_frames).min(total);
+        let window = &mono[pos..end];
+        let analysis = analyze_samples_base(window, sample_rate, channels);
+        frames.push(TimelineFrame {
+            time_s: pos as f64 / sr,
+            ugly_index: analysis.ugly_index,
+            clipped_pct: analysis.clipped_pct,
+            harshness_ratio: analysis.harshness_ratio,
+            zero_crossing_rate: analysis.zero_crossing_rate,
+        });
+        pos += hop_frames;
+    }
+    Ok(frames)
+}
+
 pub fn validate_render_options(opts: &RenderOptions) -> Result<()> {
     if !(0.1..=MAX_RENDER_DURATION_S).contains(&opts.duration) {
         return Err(anyhow!(

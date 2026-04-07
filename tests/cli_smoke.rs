@@ -556,3 +556,206 @@ fn go_accepts_zero_level_in_contour_json() {
     );
     assert!(output.exists());
 }
+
+#[test]
+fn analyze_timeline_outputs_csv_with_header() {
+    let dir = temp_dir("timeline");
+    let wav = dir.join("input.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            wav.to_str().expect("wav"),
+            "--duration",
+            "0.5",
+            "--style",
+            "harsh",
+            "--sample-rate",
+            "44100",
+        ])
+        .output()
+        .expect("render");
+    assert!(
+        render.status.success(),
+        "{}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let timeline_path = dir.join("timeline.csv");
+    let out = Command::new(bin())
+        .args([
+            "analyze",
+            wav.to_str().expect("wav"),
+            "--timeline",
+            "--timeline-format",
+            "csv",
+            "--timeline-output",
+            timeline_path.to_str().expect("path"),
+        ])
+        .output()
+        .expect("analyze --timeline");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(timeline_path.exists(), "timeline csv missing");
+    let csv = fs::read_to_string(&timeline_path).expect("csv read");
+    assert!(csv.starts_with("time_s,"), "csv header wrong:\n{csv}");
+    assert!(csv.lines().count() > 2, "csv too short:\n{csv}");
+}
+
+#[test]
+fn mutate_generates_variants_and_summary() {
+    let dir = temp_dir("mutate");
+    let input = dir.join("input.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            input.to_str().expect("input"),
+            "--duration",
+            "0.2",
+            "--style",
+            "hum",
+            "--sample-rate",
+            "22050",
+        ])
+        .output()
+        .expect("render");
+    assert!(
+        render.status.success(),
+        "{}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let out_dir = dir.join("mutate_out");
+    let out = Command::new(bin())
+        .args([
+            "mutate",
+            input.to_str().expect("input"),
+            "--out-dir",
+            out_dir.to_str().expect("out_dir"),
+            "--count",
+            "3",
+            "--model",
+            "basic",
+        ])
+        .output()
+        .expect("mutate");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out_dir.join("mutate_summary.json").exists(),
+        "summary missing"
+    );
+    let summary = fs::read_to_string(out_dir.join("mutate_summary.json")).expect("summary read");
+    assert!(
+        summary.contains("ugly_delta"),
+        "summary missing ugly_delta:\n{summary}"
+    );
+}
+
+#[test]
+fn normalize_pack_normalizes_a_batch_of_wavs() {
+    let dir = temp_dir("normalize_pack");
+    let in_dir = dir.join("input");
+    let out_dir = dir.join("output");
+    fs::create_dir_all(&in_dir).expect("mkdir");
+
+    for i in 0..3 {
+        let wav = in_dir.join(format!("item{i}.wav"));
+        let render = Command::new(bin())
+            .args([
+                "render",
+                "--output",
+                wav.to_str().expect("wav"),
+                "--duration",
+                "0.15",
+                "--style",
+                "hum",
+                "--sample-rate",
+                "22050",
+            ])
+            .output()
+            .expect("render");
+        assert!(
+            render.status.success(),
+            "{}",
+            String::from_utf8_lossy(&render.stderr)
+        );
+    }
+
+    let out = Command::new(bin())
+        .args([
+            "normalize-pack",
+            "--in-dir",
+            in_dir.to_str().expect("in_dir"),
+            "--out-dir",
+            out_dir.to_str().expect("out_dir"),
+            "--level",
+            "800",
+            "--model",
+            "basic",
+        ])
+        .output()
+        .expect("normalize-pack");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out_dir.join("normalize_manifest.json").exists(),
+        "manifest missing"
+    );
+    let manifest = fs::read_to_string(out_dir.join("normalize_manifest.json")).expect("manifest");
+    assert!(
+        manifest.contains("\"files_processed\": 3"),
+        "count wrong:\n{manifest}"
+    );
+}
+
+#[test]
+fn evolve_runs_generations_and_writes_lineage() {
+    let dir = temp_dir("evolve");
+
+    let out = Command::new(bin())
+        .args([
+            "evolve",
+            "--out-dir",
+            dir.to_str().expect("dir"),
+            "--generations",
+            "2",
+            "--population",
+            "4",
+            "--duration",
+            "0.1",
+            "--sample-rate",
+            "22050",
+            "--style",
+            "harsh",
+            "--model",
+            "basic",
+        ])
+        .output()
+        .expect("evolve");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(dir.join("lineage.json").exists(), "lineage.json missing");
+    let lineage = fs::read_to_string(dir.join("lineage.json")).expect("lineage read");
+    assert!(
+        lineage.contains("champion_ugly_index"),
+        "lineage wrong:\n{lineage}"
+    );
+    assert!(dir.join("gen01").exists(), "gen01 dir missing");
+    assert!(dir.join("gen02").exists(), "gen02 dir missing");
+}

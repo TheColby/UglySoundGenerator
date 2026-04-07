@@ -19,12 +19,15 @@ Render policy (v-next):
 ## Commands
 
 - `usg render`: Generate an ugly WAV file.
-- `usg analyze`: Analyze a WAV file and report ugliness metrics.
+- `usg analyze`: Analyze a WAV file and report ugliness metrics. Use `--timeline` for per-window ugliness over time.
 - `usg render-pack`: Render all styles + analyze + rank ugliness.
 - `usg speech`: Render chiptune speech from inline text or text files.
 - `usg speech-pack`: Render all 8 chip profiles for the same text, analyze each, and write a ranked summary.
 - `usg go`: Force any input WAV to a target ugliness level (`1..1000`).
 - `usg chain`: Chain synthesis/effects stages into one output file.
+- `usg mutate`: Apply N random ugly mutations to an input WAV and rank results by ugliness delta.
+- `usg normalize-pack`: Force every WAV in a directory to a target ugliness level.
+- `usg evolve`: Breed uglier renders across generations using a genetic algorithm.
 - `usg styles`: List available ugliness style profiles.
 - `usg backends`: Show CPU/Metal/CUDA backend availability.
 - `usg benchmark`: Compare backend render throughput and optionally export JSON/CSV.
@@ -480,6 +483,72 @@ Key flags:
 - `--top <N>`: how many top ugliest entries to print (default 5)
 - `--sample-rate`, `--backend`, `--jobs`: standard render controls
 
+## Mutate
+
+`usg mutate` takes an input WAV, applies N random ugly mutations (random flavor + level + seed), analyzes each result, and ranks by ugliness delta from the original:
+
+```bash
+cargo run -- mutate out/clean.wav --out-dir out/mutate --count 8
+cargo run -- mutate out/clean.wav --out-dir out/mutate --count 12 --level-min 600 --level-max 1000 --model psycho
+```
+
+Outputs:
+
+- `<out-dir>/<N>_<flavor>_l<level>.wav` — each mutated variant
+- `<out-dir>/mutate_summary.json` — all variants ranked by ugliness delta
+
+Key flags:
+
+- `--count <N>`: number of random mutations (default 8)
+- `--level-min` / `--level-max`: ugliness level range per mutation (default 400–950)
+- `--seed`: optional seed for reproducible mutations
+- `--model`: analysis model (default `psycho`)
+
+## Normalize Pack
+
+`usg normalize-pack` reads every `.wav` in a directory and applies `go` to bring each one to a target ugliness level:
+
+```bash
+cargo run -- normalize-pack --in-dir out/raw --out-dir out/normalized --level 700
+cargo run -- normalize-pack --in-dir out/raw --out-dir out/normalized --level 850 --type punish --model basic
+```
+
+Outputs:
+
+- `<out-dir>/<filename>.wav` — normalized file (same name as input)
+- `<out-dir>/normalize_manifest.json` — before/after ugly_index for every file
+
+Key flags:
+
+- `--in-dir`: source directory of `.wav` files
+- `--out-dir`: destination directory
+- `--level`: target ugliness level `1..1000` (default 700)
+- `--type`: go flavor (`glitch`, `punish`, `dissonance-ring`, etc.)
+- `--model`: analysis model for pre/post scoring (default `basic`)
+
+## Evolve
+
+`usg evolve` breeds uglier renders across generations using a genetic algorithm. Each generation renders a population, evaluates ugliness, keeps the top half as elite parents, and derives offspring by XOR-mutating seeds (with occasional style crossover):
+
+```bash
+cargo run -- evolve --out-dir out/evolve --generations 5 --population 8
+cargo run -- evolve --out-dir out/evolve --generations 10 --population 16 --style harsh --duration 2.0
+```
+
+Outputs:
+
+- `<out-dir>/gen<N>/<idx>_<style>_s<seed>.wav` — every individual rendered
+- `<out-dir>/lineage.json` — full generation history + champion
+
+Key flags:
+
+- `--generations <N>`: number of generations (default 5)
+- `--population <N>`: individuals per generation (default 8)
+- `--style`: lock to one style, or omit to explore all 15
+- `--duration`: render length per individual (default 1.0s)
+- `--model`: fitness scoring model (default `psycho`)
+- `--seed`: optional base seed for generation 0
+
 ## Analyze Output
 
 `usg analyze` reports:
@@ -509,6 +578,25 @@ Use `--json` to emit machine-readable output for scripting:
 ```bash
 cargo run -- analyze out/ugly.wav --json
 ```
+
+### Timeline mode
+
+`--timeline` computes ugliness per sliding window and emits the result instead of a whole-file summary. Useful for finding where in a sound the ugliness peaks:
+
+```bash
+cargo run -- analyze out/ugly.wav --timeline
+cargo run -- analyze out/ugly.wav --timeline --timeline-format csv --timeline-output out/ugly.timeline.csv
+cargo run -- analyze out/ugly.wav --timeline --timeline-window-ms 100 --timeline-hop-ms 50
+```
+
+Output columns: `time_s`, `ugly_index`, `clipped_pct`, `harshness_ratio`, `zero_crossing_rate`.
+
+Flags:
+
+- `--timeline-window-ms`: window length in ms (default 50)
+- `--timeline-hop-ms`: hop between windows in ms (default 25)
+- `--timeline-format`: `json` (default) or `csv`
+- `--timeline-output`: write to file instead of stdout
 
 Use `--joke` when you want the analyzer to also compute the absurd `UglierBasis` score described later in this README:
 
