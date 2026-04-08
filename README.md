@@ -23,7 +23,7 @@ Render policy (v-next):
 - `usg render-pack`: Render all styles + analyze + rank ugliness.
 - `usg speech`: Render chiptune speech from inline text or text files.
 - `usg speech-pack`: Render all 8 chip profiles for the same text, analyze each, and write a ranked summary.
-- `usg go`: Force any input WAV to a target ugliness level (`1..1000`).
+- `usg go`: Force any input WAV to a target ugliness level in Colbys (`-1000..+1000`).
 - `usg chain`: Chain synthesis/effects stages into one output file.
 - `usg mutate`: Apply N random ugly mutations to an input WAV and rank results by ugliness delta.
 - `usg normalize-pack`: Force every WAV in a directory to a target ugliness level.
@@ -312,7 +312,7 @@ usg render [OPTIONS]
 
 ## Go (Input -> Uglier)
 
-`usg go` takes an existing WAV file and pushes it to a target ugliness level from `1` to `1000`.
+`usg go` takes an existing WAV file and pushes it to a target ugliness level in Colbys (`-1000..+1000`).
 
 ```text
 usg go <INPUT.wav> [OPTIONS]
@@ -321,7 +321,7 @@ usg go <INPUT.wav> [OPTIONS]
 Important options:
 
 - `-o, --output <PATH>`: Output WAV path (default: `<input-stem>.go.wav`)
-- `--level <1..1000>`: Target ugliness intensity (default: `700`)
+- `--level <-1000..1000>`: Target ugliness in Colbys (default: `400`)
 - `--type <glitch|stutter|puff|punish|geek|dissonance-ring|dissonance-expand|random|lucky>`: Optional flavor (`random` when omitted)
 - `--upmix <mono|stereo|quad|5.1|7.1|custom:N>`: Optional surround upmix layout
 - `--coords <cartesian|polar>`: Coordinate system for spatial arguments
@@ -352,7 +352,7 @@ Contour JSON schema:
 ```
 
 - `t`: normalized time from `0.0` to `1.0`
-- `level`: ugliness target from `0` to `1000`
+- `level`: ugliness target in Colbys from `-1000` to `1000`
 - `version`: contour schema version, currently `1`
 - `interpolation`: `linear` or `step`
 
@@ -500,7 +500,7 @@ Outputs:
 Key flags:
 
 - `--count <N>`: number of random mutations (default 8)
-- `--level-min` / `--level-max`: ugliness level range per mutation (default 400–950)
+- `--level-min` / `--level-max`: ugliness range per mutation in Colbys (default -200..+900)
 - `--seed`: optional seed for reproducible mutations
 - `--model`: analysis model (default `psycho`)
 
@@ -516,13 +516,13 @@ cargo run -- normalize-pack --in-dir out/raw --out-dir out/normalized --level 85
 Outputs:
 
 - `<out-dir>/<filename>.wav` — normalized file (same name as input)
-- `<out-dir>/normalize_manifest.json` — before/after ugly_index for every file
+- `<out-dir>/normalize_manifest.json` — before/after Colbys for every file
 
 Key flags:
 
 - `--in-dir`: source directory of `.wav` files
 - `--out-dir`: destination directory
-- `--level`: target ugliness level `1..1000` (default 700)
+- `--level`: target ugliness in Colbys `-1000..1000` (default 400)
 - `--type`: go flavor (`glitch`, `punish`, `dissonance-ring`, etc.)
 - `--model`: analysis model for pre/post scoring (default `basic`)
 
@@ -571,7 +571,7 @@ flowchart LR
 - Zero crossing rate
 - Clipped sample percentage
 - Harshness ratio
-- Composite ugly index (`0..1000`)
+- Composite ugliness score in Colbys (`-1000..+1000`)
 
 Use `--json` to emit machine-readable output for scripting:
 
@@ -589,7 +589,7 @@ cargo run -- analyze out/ugly.wav --timeline --timeline-format csv --timeline-ou
 cargo run -- analyze out/ugly.wav --timeline --timeline-window-ms 100 --timeline-hop-ms 50
 ```
 
-Output columns: `time_s`, `ugly_index`, `clipped_pct`, `harshness_ratio`, `zero_crossing_rate`.
+Output columns: `time_s`, `colbys`, `clipped_pct`, `harshness_ratio`, `zero_crossing_rate`.
 
 Flags:
 
@@ -868,9 +868,9 @@ Benchmarking:
 - `usg benchmark` runs repeatable timed renders for each available backend
 - output is average render time per backend, ranked fastest to slowest
 
-## Ugliness Index
+## Ugliness Index (Colbys)
 
-`ugly_index` is currently a fast psychoacoustic proxy in the range `0..1000`.
+Ugliness is measured in **Colbys (Co)**, ranging from **-1000** (cleanest) through **0** (neutral) to **+1000** (catastrophically ugly).
 
 ### Current formula (implemented)
 
@@ -898,13 +898,14 @@ Let \(x[n]\) be the mono waveform, \(N\) samples total:
 ```
 
 ```math
-\mathrm{ugly\_index}
+\mathrm{colbys}
 =
 \mathrm{clamp}\!\left(
-10\left(1.6\,\mathrm{clipped\_pct}
+20\left(1.6\,\mathrm{clipped\_pct}
 +45\,\mathrm{harshness\_ratio}
-+200\,\mathrm{zero\_cross\_rate}\right),
-0,1000
++200\,\mathrm{zero\_cross\_rate}\right)
+- 1000,\;
+-1000,\;1000
 \right)
 ```
 
@@ -920,10 +921,11 @@ In psychoacoustic terms, the metric intentionally rewards traits associated with
 
 ### Interpretation guide
 
-- `0-200`: mostly tame
-- `200-450`: noticeably abrasive
-- `450-700`: aggressively ugly
-- `700-1000`: catastrophic/noise-weapon territory
+- `-1000` to `-600`: pristine / barely processed
+- `-600` to `-200`: mostly tame
+- `-200` to `+200`: noticeably abrasive
+- `+200` to `+600`: aggressively ugly
+- `+600` to `+1000`: catastrophic / noise-weapon territory
 
 ## Psychoacoustic Math Roadmap
 
@@ -965,7 +967,7 @@ Then fuses them:
 ```
 
 ```math
-\mathrm{ugly\_index\_psycho} = 1000\,\sigma(\mathrm{weighted\_sum})
+\mathrm{colbys\_psycho} = \mathrm{clamp}\!\left(2000\,\sigma(\mathrm{weighted\_sum}) - 1000,\;-1000,\;1000\right)
 ```
 
 The deeper research target remains critical-band analysis:

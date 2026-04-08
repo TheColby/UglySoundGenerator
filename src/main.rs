@@ -526,13 +526,13 @@ struct MutateArgs {
     #[arg(long, default_value_t = 8)]
     count: usize,
 
-    /// Minimum ugliness level applied per mutation.
-    #[arg(long, default_value_t = 400)]
-    level_min: u16,
+    /// Minimum ugliness in Colbys (-1000..1000).
+    #[arg(long, default_value_t = -200, allow_negative_numbers = true)]
+    level_min: i32,
 
-    /// Maximum ugliness level applied per mutation.
-    #[arg(long, default_value_t = 950)]
-    level_max: u16,
+    /// Maximum ugliness in Colbys (-1000..1000).
+    #[arg(long, default_value_t = 900, allow_negative_numbers = true)]
+    level_max: i32,
 
     /// Optional seed for reproducible mutations.
     #[arg(long)]
@@ -576,9 +576,9 @@ struct NormalizePackArgs {
     #[arg(long, default_value = "out/normalized")]
     out_dir: PathBuf,
 
-    /// Target ugliness level (1..1000).
-    #[arg(long, value_parser = clap::value_parser!(u16).range(1..=1000), default_value_t = 700)]
-    level: u16,
+    /// Target ugliness in Colbys (-1000..1000).
+    #[arg(long, default_value_t = 400, allow_negative_numbers = true)]
+    level: i32,
 
     /// Go flavor to apply.
     #[arg(long = "type", value_enum)]
@@ -682,9 +682,9 @@ struct GoArgs {
     #[arg(short = 'r', long, default_value_t = 192_000)]
     sample_rate: u32,
 
-    /// Ugliness level (1..1000).
-    #[arg(long, value_parser = clap::value_parser!(u16).range(1..=1000), default_value_t = 700)]
-    level: u16,
+    /// Target ugliness in Colbys (-1000..1000).
+    #[arg(long, default_value_t = 400, allow_negative_numbers = true)]
+    level: i32,
 
     /// Optional uglification flavor.
     #[arg(long = "type", value_enum)]
@@ -1615,7 +1615,7 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
     println!("zero_crossing_rate: {:.4}", report.basic.zero_crossing_rate);
     println!("clipped_pct: {:.2}%", report.basic.clipped_pct);
     println!("harshness_ratio: {:.3}", report.basic.harshness_ratio);
-    println!("basic_ugly_index: {:.1}/1000", report.basic.ugly_index);
+    println!("basic.colbys: {:.0} Co", report.basic.colbys);
 
     if let Some(psycho) = &report.psycho {
         println!("psycho.clip_norm: {:.3}", psycho.clip_norm);
@@ -1648,7 +1648,7 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
     }
 
     if let Some(joke) = &report.joke {
-        println!("joke.uglierbasis_index: {:.1}/1000", joke.uglierbasis_index);
+        println!("joke.uglierbasis_index: {:.0} Co", joke.uglierbasis_index);
         println!("joke.verdict: {}", joke.verdict);
         println!(
             "joke.academic_cluster_norm: {:.3}",
@@ -1666,7 +1666,7 @@ fn analyze(args: AnalyzeArgs) -> Result<()> {
         println!("joke.weighted_sum: {:.3}", joke.weighted_sum);
     }
 
-    println!("ugly_index: {:.1}/1000", report.selected_ugly_index);
+    println!("colbys: {:.0} Co  (Colbys)", report.colbys);
     Ok(())
 }
 
@@ -1696,11 +1696,11 @@ fn analyze_timeline(args: AnalyzeArgs) -> Result<()> {
         TimelineFormatArg::Json => emit(serde_json::to_string_pretty(&frames)? + "\n"),
         TimelineFormatArg::Csv => {
             let mut out =
-                String::from("time_s,ugly_index,clipped_pct,harshness_ratio,zero_crossing_rate\n");
+                String::from("time_s,colbys,clipped_pct,harshness_ratio,zero_crossing_rate\n");
             for f in &frames {
                 out.push_str(&format!(
                     "{:.6},{:.6},{:.6},{:.6},{:.6}\n",
-                    f.time_s, f.ugly_index, f.clipped_pct, f.harshness_ratio, f.zero_crossing_rate
+                    f.time_s, f.colbys, f.clipped_pct, f.harshness_ratio, f.zero_crossing_rate
                 ));
             }
             emit(out)
@@ -1714,10 +1714,10 @@ fn analyze_timeline(args: AnalyzeArgs) -> Result<()> {
 struct MutateEntry {
     index: usize,
     flavor: String,
-    level: u16,
+    level_co: i32,
     seed: u64,
     output: String,
-    ugly_index: f64,
+    colbys: f64,
     ugly_delta: f64,
 }
 
@@ -1725,7 +1725,7 @@ struct MutateEntry {
 struct MutateSummary {
     generated_unix_s: u64,
     input: String,
-    base_ugly_index: f64,
+    base_colbys: f64,
     model: String,
     count: usize,
     entries: Vec<MutateEntry>,
@@ -1747,10 +1747,11 @@ fn mutate(args: MutateArgs) -> Result<()> {
 
     let base_analysis = analyze_wav_with_options(&args.input, &analyze_opts)
         .with_context(|| format!("failed to analyze input {}", args.input.display()))?;
-    let base_ugly = base_analysis.selected_ugly_index;
+    let base_ugly = base_analysis.colbys;
 
     let base_seed = args.seed.unwrap_or_else(seed_from_time);
     let level_range = (args.level_max.max(args.level_min + 1) - args.level_min) as u64;
+    let level_min_co = args.level_min.clamp(-1000, 1000);
 
     // Deterministic flavors (exclude Random/Lucky so every mutation is named)
     const FLAVORS: [GoFlavor; 7] = [
@@ -1775,11 +1776,12 @@ fn mutate(args: MutateArgs) -> Result<()> {
             .map(|&idx| {
                 let mut rng = ChaCha8Rng::seed_from_u64(style_seed(base_seed, idx as u64));
                 let flavor = FLAVORS[rng.gen_range(0..FLAVORS.len())];
-                let level = args.level_min + (rng.gen_range(0..level_range) as u16);
+                let level_co = level_min_co + (rng.gen_range(0..level_range) as i32);
+                let level = colbys_to_level(level_co);
                 let seed = style_seed(base_seed, idx as u64 + 1000);
-                let output =
-                    args.out_dir
-                        .join(format!("{:02}_{}_l{}.wav", idx + 1, flavor.as_str(), level));
+                let output = args
+                    .out_dir
+                    .join(format!("{:02}_{}_{}Co.wav", idx + 1, flavor.as_str(), level_co));
                 go_ugly_file_with_engine_contour_encoding(
                     &args.input,
                     &output,
@@ -1799,11 +1801,11 @@ fn mutate(args: MutateArgs) -> Result<()> {
                 Ok(MutateEntry {
                     index: idx + 1,
                     flavor: flavor.as_str().to_string(),
-                    level,
+                    level_co,
                     seed,
                     output: output.display().to_string(),
-                    ugly_index: analysis.selected_ugly_index,
-                    ugly_delta: analysis.selected_ugly_index - base_ugly,
+                    colbys: analysis.colbys,
+                    ugly_delta: analysis.colbys - base_ugly,
                 })
             })
             .collect()
@@ -1815,7 +1817,7 @@ fn mutate(args: MutateArgs) -> Result<()> {
     let summary = MutateSummary {
         generated_unix_s: now_unix_s(),
         input: args.input.display().to_string(),
-        base_ugly_index: base_ugly,
+        base_colbys: base_ugly,
         model: analyze_opts.model.as_str().to_string(),
         count: entries.len(),
         entries,
@@ -1826,16 +1828,16 @@ fn mutate(args: MutateArgs) -> Result<()> {
         .with_context(|| format!("failed to write {}", summary_path.display()))?;
 
     println!(
-        "Mutate: {} variants of {} (base ugly: {:.1}/1000)",
+        "Mutate: {} variants of {} (base ugly: {:.0} Co)",
         summary.count,
         args.input.display(),
-        summary.base_ugly_index
+        summary.base_colbys
     );
     println!("Top mutations by ugliness delta:");
     for e in summary.entries.iter().take(5) {
         println!(
-            "  {:>2}. {:<16} l={:<4} {:>5.1}/1000 (Δ{:+.1})  {}",
-            e.index, e.flavor, e.level, e.ugly_index, e.ugly_delta, e.output
+            "  {:>2}. {:<16} l={:<4} {:>6.0} Co (Δ{:+.1})  {}",
+            e.index, e.flavor, e.level_co, e.colbys, e.ugly_delta, e.output
         );
     }
     println!("Summary: {}", summary_path.display());
@@ -1849,9 +1851,9 @@ struct NormalizePackEntry {
     filename: String,
     input: String,
     output: String,
-    before_ugly_index: f64,
-    after_ugly_index: f64,
-    target_level: u16,
+    before_colbys: f64,
+    after_colbys: f64,
+    target_colbys: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1859,7 +1861,7 @@ struct NormalizePackSummary {
     generated_unix_s: u64,
     in_dir: String,
     out_dir: String,
-    target_level: u16,
+    target_colbys: i32,
     model: String,
     files_processed: usize,
     entries: Vec<NormalizePackEntry>,
@@ -1916,7 +1918,7 @@ fn normalize_pack(args: NormalizePackArgs) -> Result<()> {
                 go_ugly_file_with_engine_contour_encoding(
                     input,
                     &output,
-                    args.level,
+                    colbys_to_level(args.level),
                     flavor,
                     Some(seed),
                     true,
@@ -1935,9 +1937,9 @@ fn normalize_pack(args: NormalizePackArgs) -> Result<()> {
                     filename: fname.to_string(),
                     input: input.display().to_string(),
                     output: output.display().to_string(),
-                    before_ugly_index: before.selected_ugly_index,
-                    after_ugly_index: after.selected_ugly_index,
-                    target_level: args.level,
+                    before_colbys: before.colbys,
+                    after_colbys: after.colbys,
+                    target_colbys: args.level,
                 })
             })
             .collect()
@@ -1950,7 +1952,7 @@ fn normalize_pack(args: NormalizePackArgs) -> Result<()> {
         generated_unix_s: now_unix_s(),
         in_dir: args.in_dir.display().to_string(),
         out_dir: args.out_dir.display().to_string(),
-        target_level: args.level,
+        target_colbys: args.level,
         model: analyze_opts.model.as_str().to_string(),
         files_processed: entries.len(),
         entries,
@@ -1961,15 +1963,15 @@ fn normalize_pack(args: NormalizePackArgs) -> Result<()> {
         .with_context(|| format!("failed to write {}", manifest_path.display()))?;
 
     println!(
-        "normalize-pack: {} files -> {} (target level {})",
+        "normalize-pack: {} files -> {} (target {} Co)",
         summary.files_processed,
         args.out_dir.display(),
-        summary.target_level
+        summary.target_colbys
     );
     for e in &summary.entries {
         println!(
-            "  {} : {:.1} -> {:.1}/1000",
-            e.filename, e.before_ugly_index, e.after_ugly_index
+            "  {} : {:.1} -> {:.0} Co",
+            e.filename, e.before_colbys, e.after_colbys
         );
     }
     println!("Manifest: {}", manifest_path.display());
@@ -1984,7 +1986,7 @@ struct EvolveIndividual {
     index: usize,
     style: String,
     seed: u64,
-    ugly_index: f64,
+    colbys: f64,
     output: String,
 }
 
@@ -1992,7 +1994,7 @@ struct EvolveIndividual {
 struct EvolveLineage {
     generations: usize,
     population: usize,
-    champion_ugly_index: f64,
+    champion_colbys: f64,
     champion_style: String,
     champion_seed: u64,
     champion_output: String,
@@ -2073,7 +2075,7 @@ fn evolve(args: EvolveArgs) -> Result<()> {
                         *idx,
                         *style,
                         *seed,
-                        analysis.selected_ugly_index,
+                        analysis.colbys,
                         output.display().to_string(),
                     ))
                 })
@@ -2090,11 +2092,11 @@ fn evolve(args: EvolveArgs) -> Result<()> {
                 index: idx + 1,
                 style: style.as_str().to_string(),
                 seed: *seed,
-                ugly_index: *ugly,
+                colbys: *ugly,
                 output: output.clone(),
             });
             println!(
-                "gen{:02} {:>2}. {:<12} ugly={:.1}/1000  seed={}",
+                "gen{:02} {:>2}. {:<12} ugly={:.0} Co  seed={}",
                 generation + 1,
                 i + 1,
                 style.as_str(),
@@ -2129,14 +2131,14 @@ fn evolve(args: EvolveArgs) -> Result<()> {
 
     let champion = all_individuals
         .iter()
-        .max_by(|a, b| a.ugly_index.total_cmp(&b.ugly_index))
+        .max_by(|a, b| a.colbys.total_cmp(&b.colbys))
         .cloned()
         .expect("no individuals");
 
     let lineage = EvolveLineage {
         generations: args.generations,
         population: args.population,
-        champion_ugly_index: champion.ugly_index,
+        champion_colbys: champion.colbys,
         champion_style: champion.style.clone(),
         champion_seed: champion.seed,
         champion_output: champion.output.clone(),
@@ -2148,8 +2150,8 @@ fn evolve(args: EvolveArgs) -> Result<()> {
         .with_context(|| format!("failed to write {}", lineage_path.display()))?;
 
     println!(
-        "\nChampion: {} seed={} ugly={:.1}/1000",
-        lineage.champion_style, lineage.champion_seed, lineage.champion_ugly_index
+        "\nChampion: {} seed={} ugly={:.0} Co",
+        lineage.champion_style, lineage.champion_seed, lineage.champion_colbys
     );
     println!("  -> {}", lineage.champion_output);
     println!("Lineage: {}", lineage_path.display());
@@ -2214,7 +2216,7 @@ struct SpeechPackEntry {
     profile: String,
     seed: u64,
     output: String,
-    ugly_index: f64,
+    colbys: f64,
     intelligibility: SpeechIntelligibility,
     analysis: AnalysisReport,
 }
@@ -2224,10 +2226,10 @@ struct SpeechPackRankingEntry {
     rank: usize,
     profile: String,
     output: String,
-    ugly_index: f64,
+    colbys: f64,
     intelligibility_index: f64,
     rank_score: f64,
-    basic_ugly_index: f64,
+    basic_colbys: f64,
     seed: u64,
 }
 
@@ -2249,10 +2251,10 @@ struct SpeechPackSummary {
 
 fn speech_pack_rank_score(entry: &SpeechPackEntry, rank_by: SpeechPackRankArg) -> f64 {
     match rank_by {
-        SpeechPackRankArg::Ugliness => entry.ugly_index,
+        SpeechPackRankArg::Ugliness => entry.colbys,
         SpeechPackRankArg::Intelligibility => entry.intelligibility.intelligibility_index,
         SpeechPackRankArg::Balanced => {
-            0.65 * entry.ugly_index + 0.35 * entry.intelligibility.intelligibility_index
+            0.65 * entry.colbys + 0.35 * entry.intelligibility.intelligibility_index
         }
     }
 }
@@ -2262,7 +2264,7 @@ struct PackEntry {
     style: String,
     seed: u64,
     output: String,
-    ugly_index: f64,
+    colbys: f64,
     analysis: AnalysisReport,
 }
 
@@ -2271,9 +2273,9 @@ struct PackRankingEntry {
     rank: usize,
     style: String,
     output: String,
-    ugly_index: f64,
+    colbys: f64,
     seed: u64,
-    basic_ugly_index: f64,
+    basic_colbys: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2425,7 +2427,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
                         profile: profile.as_str().to_string(),
                         seed,
                         output: output.display().to_string(),
-                        ugly_index: analysis.selected_ugly_index,
+                        colbys: analysis.colbys,
                         intelligibility,
                         analysis,
                     },
@@ -2452,10 +2454,10 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
             rank: i + 1,
             profile: e.profile.clone(),
             output: e.output.clone(),
-            ugly_index: e.ugly_index,
+            colbys: e.colbys,
             intelligibility_index: e.intelligibility.intelligibility_index,
             rank_score: speech_pack_rank_score(e, args.rank_by),
-            basic_ugly_index: e.analysis.basic.ugly_index,
+            basic_colbys: e.analysis.basic.colbys,
             seed: e.seed,
         })
         .collect();
@@ -2508,7 +2510,7 @@ fn speech_pack(args: SpeechPackArgs) -> Result<()> {
             "  {:>2}. {:<14} ugly {:>5.1}  intel {:>5.1}  score {:>5.1}  {}",
             row.rank,
             row.profile,
-            row.ugly_index,
+            row.colbys,
             row.intelligibility_index,
             row.rank_score,
             row.output
@@ -2573,7 +2575,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
                         style: style.as_str().to_string(),
                         seed,
                         output: output.display().to_string(),
-                        ugly_index: analysis.selected_ugly_index,
+                        colbys: analysis.colbys,
                         analysis,
                     },
                 ))
@@ -2591,7 +2593,7 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
         .collect();
 
     let mut ranked = entries.clone();
-    ranked.sort_by(|a, b| b.ugly_index.total_cmp(&a.ugly_index));
+    ranked.sort_by(|a, b| b.colbys.total_cmp(&a.colbys));
     let ranking: Vec<PackRankingEntry> = ranked
         .iter()
         .enumerate()
@@ -2599,9 +2601,9 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
             rank: i + 1,
             style: e.style.clone(),
             output: e.output.clone(),
-            ugly_index: e.ugly_index,
+            colbys: e.colbys,
             seed: e.seed,
-            basic_ugly_index: e.analysis.basic.ugly_index,
+            basic_colbys: e.analysis.basic.colbys,
         })
         .collect();
 
@@ -2654,8 +2656,8 @@ fn render_pack(args: RenderPackArgs) -> Result<()> {
     println!("Top ugliest:");
     for row in summary.ranking.iter().take(args.top.max(1)) {
         println!(
-            "  {:>2}. {:<8} {:>5.1}/1000 (basic {:>5.1})  {}",
-            row.rank, row.style, row.ugly_index, row.basic_ugly_index, row.output
+            "  {:>2}. {:<8} {:>6.0} Co (basic {:>5.1})  {}",
+            row.rank, row.style, row.colbys, row.basic_colbys, row.output
         );
     }
     Ok(())
@@ -2677,7 +2679,7 @@ fn go(args: GoArgs) -> Result<()> {
         .unwrap_or_else(|| default_go_output_path(&args.input));
     let flavor = args.flavor.map(Into::into);
     let seed = apply_seed_controls(args.seed, randomness);
-    let level = randomize_go_level(args.level, randomness, seed);
+    let level = randomize_go_level(colbys_to_level(args.level), randomness, seed);
     let normalize_dbfs = randomize_normalize_dbfs(args.normalize_dbfs, randomness, seed);
 
     let summary = if let Some(layout_text) = args.upmix.as_ref() {
@@ -3541,6 +3543,11 @@ fn now_unix_s() -> u64 {
     }
 }
 
+/// Convert a Colbys value (-1000..1000) to the internal go level (1..1000).
+fn colbys_to_level(colbys: i32) -> u16 {
+    ((colbys.clamp(-1000, 1000) + 1000) / 2).clamp(1, 1000) as u16
+}
+
 fn style_seed(base_seed: u64, idx: u64) -> u64 {
     let mut z = base_seed
         .wrapping_add(0x9E37_79B9_7F4A_7C15)
@@ -3885,14 +3892,14 @@ fn write_pack_csv(path: &Path, summary: &PackSummary) -> Result<()> {
         }
     }
     let mut text = String::new();
-    text.push_str("rank,style,ugly_index,basic_ugly_index,seed,output\n");
+    text.push_str("rank,style,colbys,basic_colbys,seed,output\n");
     for row in &summary.ranking {
         text.push_str(&format!(
             "{},{},{:.6},{:.6},{},{}\n",
             row.rank,
             csv_escape(&row.style),
-            row.ugly_index,
-            row.basic_ugly_index,
+            row.colbys,
+            row.basic_colbys,
             row.seed,
             csv_escape(&row.output),
         ));
@@ -3914,8 +3921,8 @@ fn write_pack_html(path: &Path, summary: &PackSummary) -> Result<()> {
             "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td><audio controls preload=\"none\" src=\"{}\"></audio></td></tr>\n",
             row.rank,
             html_escape(&row.style),
-            row.ugly_index,
-            row.basic_ugly_index,
+            row.colbys,
+            row.basic_colbys,
             row.seed,
             html_escape(file_name_or_path(&row.output)),
         ));
@@ -4056,17 +4063,17 @@ fn write_speech_pack_csv(path: &Path, summary: &SpeechPackSummary) -> Result<()>
     }
     let mut text = String::new();
     text.push_str(
-        "rank,profile,ugly_index,intelligibility_index,rank_score,basic_ugly_index,seed,output\n",
+        "rank,profile,colbys,intelligibility_index,rank_score,basic_colbys,seed,output\n",
     );
     for row in &summary.ranking {
         text.push_str(&format!(
             "{},{},{:.6},{:.6},{:.6},{:.6},{},{}\n",
             row.rank,
             csv_escape(&row.profile),
-            row.ugly_index,
+            row.colbys,
             row.intelligibility_index,
             row.rank_score,
-            row.basic_ugly_index,
+            row.basic_colbys,
             row.seed,
             csv_escape(&row.output),
         ));
@@ -4088,10 +4095,10 @@ fn write_speech_pack_html(path: &Path, summary: &SpeechPackSummary) -> Result<()
             "<tr><td>{}</td><td>{}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{:.1}</td><td>{}</td><td><audio controls preload=\"none\" src=\"{}\"></audio></td></tr>\n",
             row.rank,
             html_escape(&row.profile),
-            row.ugly_index,
+            row.colbys,
             row.intelligibility_index,
             row.rank_score,
-            row.basic_ugly_index,
+            row.basic_colbys,
             row.seed,
             html_escape(file_name_or_path(&row.output)),
         ));

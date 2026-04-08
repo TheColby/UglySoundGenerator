@@ -44,7 +44,7 @@ fn analyze_reports_scores_as_out_of_1000() {
         .expect("analyze command");
     assert!(analyze.status.success(), "analyze failed");
     let stdout = String::from_utf8_lossy(&analyze.stdout);
-    assert!(stdout.contains("/1000"), "stdout was:\n{stdout}");
+    assert!(stdout.contains(" Co"), "stdout was:\n{stdout}");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn render_pack_reports_scores_as_out_of_1000() {
         .expect("render-pack command");
     assert!(out.status.success(), "render-pack failed");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("/1000"), "stdout was:\n{stdout}");
+    assert!(stdout.contains(" Co"), "stdout was:\n{stdout}");
 }
 
 #[test]
@@ -507,7 +507,7 @@ fn speech_pack_renders_all_profiles_and_writes_outputs() {
 
     let csv = fs::read_to_string(dir.join("ranking.csv")).expect("csv");
     assert!(
-        csv.contains("rank,profile,ugly_index,intelligibility_index,rank_score,"),
+        csv.contains("rank,profile,colbys,intelligibility_index,rank_score,"),
         "csv header wrong:\n{csv}"
     );
 }
@@ -753,7 +753,7 @@ fn evolve_runs_generations_and_writes_lineage() {
     assert!(dir.join("lineage.json").exists(), "lineage.json missing");
     let lineage = fs::read_to_string(dir.join("lineage.json")).expect("lineage read");
     assert!(
-        lineage.contains("champion_ugly_index"),
+        lineage.contains("champion_colbys"),
         "lineage wrong:\n{lineage}"
     );
     assert!(dir.join("gen01").exists(), "gen01 dir missing");

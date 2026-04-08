@@ -869,7 +869,8 @@ pub struct Analysis {
     pub zero_crossing_rate: f64,
     pub clipped_pct: f64,
     pub harshness_ratio: f64,
-    pub ugly_index: f64,
+    /// Ugliness in Colbys: -1000 (cleanest) to +1000 (most ugly), 0 = neutral.
+    pub colbys: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -887,7 +888,8 @@ pub struct PsychoAnalysis {
     pub tritone_tension_norm: f64,
     pub wolf_fifth_norm: f64,
     pub weighted_sum: f64,
-    pub ugly_index: f64,
+    /// Ugliness in Colbys: -1000 (cleanest) to +1000 (most ugly), 0 = neutral.
+    pub colbys: f64,
     pub fft_size: usize,
     pub hop_size: usize,
 }
@@ -895,7 +897,8 @@ pub struct PsychoAnalysis {
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisReport {
     pub model: String,
-    pub selected_ugly_index: f64,
+    /// Ugliness in Colbys: -1000 (cleanest) to +1000 (most ugly), 0 = neutral.
+    pub colbys: f64,
     pub basic: Analysis,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub psycho: Option<PsychoAnalysis>,
@@ -2277,11 +2280,11 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
     };
 
     let basic = analyze_samples_base(&mono, sample_rate, channels);
-    let (selected_ugly_index, psycho) = match opts.model {
-        AnalyzeModel::Basic => (basic.ugly_index, None),
+    let (colbys, psycho) = match opts.model {
+        AnalyzeModel::Basic => (basic.colbys, None),
         AnalyzeModel::Psycho => {
             let psycho = analyze_samples_psycho(&mono, sample_rate, &basic, opts, stereo_pair);
-            (psycho.ugly_index, Some(psycho))
+            (psycho.colbys, Some(psycho))
         }
     };
     let joke = if opts.joke {
@@ -2295,7 +2298,7 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
 
     Ok(AnalysisReport {
         model: opts.model.as_str().to_string(),
-        selected_ugly_index,
+        colbys,
         basic,
         psycho,
         joke,
@@ -2325,8 +2328,8 @@ impl Default for TimelineOptions {
 pub struct TimelineFrame {
     /// Start time of this window in seconds.
     pub time_s: f64,
-    /// Basic ugly_index for this window.
-    pub ugly_index: f64,
+    /// Ugliness of this window in Colbys (-1000..+1000).
+    pub colbys: f64,
     /// Clipped sample percentage in this window.
     pub clipped_pct: f64,
     /// Harshness ratio in this window.
@@ -2360,7 +2363,7 @@ pub fn analyze_wav_timeline(path: &Path, opts: &TimelineOptions) -> Result<Vec<T
         let analysis = analyze_samples_base(window, sample_rate, channels);
         frames.push(TimelineFrame {
             time_s: pos as f64 / sr,
-            ugly_index: analysis.ugly_index,
+            colbys: analysis.colbys,
             clipped_pct: analysis.clipped_pct,
             harshness_ratio: analysis.harshness_ratio,
             zero_crossing_rate: analysis.zero_crossing_rate,
@@ -4700,9 +4703,10 @@ fn analyze_samples_base(samples: &[f64], sample_rate: u32, channels: u16) -> Ana
     let zero_crossing_rate = zero_crossings as f64 / len;
     let clipped_pct = (clipped_count as f64 / len) * 100.0;
     let harshness_ratio = (diff_energy / sum_sq.max(EPS64)).sqrt();
-    let ugly_index = ((clipped_pct * 1.6 + harshness_ratio * 45.0 + zero_crossing_rate * 200.0)
-        * 10.0)
-        .clamp(0.0, 1000.0);
+    let colbys = ((clipped_pct * 1.6 + harshness_ratio * 45.0 + zero_crossing_rate * 200.0)
+        * 20.0
+        - 1000.0)
+        .clamp(-1000.0, 1000.0);
 
     Analysis {
         sample_rate,
@@ -4714,7 +4718,7 @@ fn analyze_samples_base(samples: &[f64], sample_rate: u32, channels: u16) -> Ana
         zero_crossing_rate,
         clipped_pct,
         harshness_ratio,
-        ugly_index,
+        colbys,
     }
 }
 
@@ -4767,7 +4771,7 @@ fn analyze_samples_psycho(
         + 0.75 * wolf_fifth_norm
         - 0.45 * harmonicity_norm;
 
-    let ugly_index = 1000.0 * sigmoid(weighted_sum);
+    let colbys = (2000.0 * sigmoid(weighted_sum) - 1000.0).clamp(-1000.0, 1000.0);
 
     PsychoAnalysis {
         clip_norm,
@@ -4783,7 +4787,7 @@ fn analyze_samples_psycho(
         tritone_tension_norm,
         wolf_fifth_norm,
         weighted_sum,
-        ugly_index: ugly_index.clamp(0.0, 1000.0),
+        colbys,
         fft_size: opts.fft_size,
         hop_size: opts.hop_size,
     }
@@ -5776,7 +5780,7 @@ mod tests {
             render_samples(16_384, 44_100.0, Style::Catastrophic, 0.8, 7).expect("catastrophic");
         let hum_report = analyze_samples_base(&hum, 44_100, 1);
         let catastrophic_report = analyze_samples_base(&catastrophic, 44_100, 1);
-        assert!(catastrophic_report.ugly_index > hum_report.ugly_index + 150.0);
+        assert!(catastrophic_report.colbys > hum_report.colbys + 300.0);
         assert!(catastrophic_report.harshness_ratio > hum_report.harshness_ratio);
     }
 
@@ -5926,7 +5930,7 @@ mod tests {
         let silence = vec![0.0_f64; 4_410];
         let report = analyze_samples_base(&silence, 44_100, 1);
         assert!(report.peak_dbfs < -100.0);
-        assert!(report.ugly_index >= 0.0 && report.ugly_index <= 1000.0);
+        assert!(report.colbys >= -1000.0 && report.colbys <= 1000.0);
         assert_eq!(report.clipped_pct, 0.0);
     }
 
@@ -5946,7 +5950,7 @@ mod tests {
             },
             None,
         );
-        assert!(psycho.ugly_index < 200.0);
+        assert!(psycho.colbys < -600.0);
     }
 
     #[test]
@@ -6077,7 +6081,7 @@ mod tests {
         .expect("analyze psycho");
 
         assert_eq!(report.model, "psycho");
-        assert!(report.selected_ugly_index >= 0.0 && report.selected_ugly_index <= 1000.0);
+        assert!(report.colbys >= -1000.0 && report.colbys <= 1000.0);
         assert!(report.psycho.is_some());
         let psycho = report.psycho.expect("psycho");
         assert!((0.0..=1.0).contains(&psycho.harmonicity_norm));
