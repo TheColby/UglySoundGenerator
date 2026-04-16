@@ -1,0 +1,14 @@
+name: Verification
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  macos-metal-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test With Metal Feature Enabled
+        run: cargo test --all-targets --features metal
