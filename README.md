@@ -1,1252 +1,157 @@
-# UglySoundGenerator (usg)
+# UglySoundGenerator
 
-<p align="center">
-  <img src="assets/usg-logo.svg" alt="usg glitch logo" width="380">
-</p>
+UglySoundGenerator (`usg`) is a Rust command-line instrument for rendering, chaining, analyzing, and forcing sounds toward deliberate sonic ugliness.
 
-`usg` is a Rust command-line tool for creating and inspecting intentionally ugly sounds.
+It is best understood as **three core tools** with a few power-user satellites:
 
-Render policy (v-next):
+- `render`: synthesize ugly material from scratch
+- `chain`: route a render or preset pipeline through multiple stages
+- `analyze`: measure the result in **Colbys**
 
-- Internal DSP uses 64-bit (`f64`) processing.
-- Output WAV format defaults to 32-bit float PCM; use `--sample-format int --bit-depth 16|24|32` to override.
-- Render sample rate defaults to `192000` Hz unless set via CLI.
-- Peak normalization defaults to `0 dBFS` unless disabled or changed via CLI.
-- Long renders use chunked streaming (constant-memory render path).
-- Backend-aware execution supports `cpu`, `metal`, `cuda`, or `auto`.
-- Pack rendering is massively parallel by default (core-count workers).
+Advanced tools such as `go`, `mutate`, `normalize-pack`, `evolve`, and `speech` build on those three surfaces rather than replacing them.
 
-## Commands
+## Quickstart
 
-- `usg render`: Generate an ugly WAV file.
-- `usg analyze`: Analyze a WAV file and report ugliness metrics. Use `--timeline` for per-window ugliness over time.
-- `usg render-pack`: Render all styles + analyze + rank ugliness.
-- `usg speech`: Render chiptune speech from inline text or text files.
-- `usg speech-pack`: Render all 8 chip profiles for the same text, analyze each, and write a ranked summary.
-- `usg go`: Force any input WAV to a target ugliness level in Colbys (`-1000..+1000`).
-- `usg chain`: Chain synthesis/effects stages into one output file.
-- `usg mutate`: Apply N random ugly mutations to an input WAV and rank results by ugliness delta.
-- `usg normalize-pack`: Force every WAV in a directory to a target ugliness level.
-- `usg evolve`: Breed uglier renders across generations using a genetic algorithm.
-- `usg styles`: List available ugliness style profiles.
-- `usg backends`: Show CPU/Metal/CUDA backend availability.
-- `usg benchmark`: Compare backend render throughput and optionally export JSON/CSV.
-- `usg presets`: List and inspect built-in contour and chain presets.
-- `usg marathon`: Bulk-generate large ugly sound libraries.
+Build:
 
-### Command Map
+```bash
+cargo build
+```
+
+Render a default file:
+
+```bash
+cargo run -- render --output out/harsh.wav --duration 2.0 --style harsh
+```
+
+Analyze it:
+
+```bash
+cargo run -- analyze out/harsh.wav
+cargo run -- analyze out/harsh.wav --json
+```
+
+Force an existing file to a target ugliness in Colbys:
+
+```bash
+cargo run -- go out/harsh.wav --level 650 --type punish --output out/harsh.go.wav
+```
+
+Build a chain:
+
+```bash
+cargo run -- chain --stages style:glitch,stutter,pop --duration 3.0 --output out/chain.wav
+```
+
+## One Metric, One Meaning
+
+USG uses a single public ugliness unit: **Colbys (Co)**.
+
+- `-1000 Co`: cleanest / least ugly
+- `0 Co`: neutral center
+- `+1000 Co`: most ugly
+
+`go --level` always means **target Colbys**. Internally, the engine maps that target to a normalized drive intensity in the range `0.0..1.0`, but that is an implementation detail, not a second public scoring system.
+
+## Product Boundary
+
+The repo has a lot in it, so the intended hierarchy matters:
+
+1. Core creation: `render`, `chain`, `go`
+2. Core inspection: `analyze`
+3. Support surfaces: `presets`, `backends`, `benchmark`
+4. Power tools: `mutate`, `normalize-pack`, `evolve`, `speech`, `speech-pack`, `marathon`
+
+If you are new to the project, start with the first two layers and ignore the rest until you need them.
+
+## Command Map
+
+| Area | What it does | Primary doc |
+| --- | --- | --- |
+| Rendering | Create ugly sounds from scratch | [docs/COMMANDS.md](docs/COMMANDS.md) |
+| Chaining | Route synthesis/effects through multiple stages | [docs/COMMANDS.md](docs/COMMANDS.md) |
+| Analysis | Measure ugliness and psychoacoustic features | [docs/METRICS.md](docs/METRICS.md) |
+| Psychoacoustics | Equations, assumptions, references, joke metric | [docs/PSYCHOACOUSTICS.md](docs/PSYCHOACOUSTICS.md) |
+| Example corpus | 333 reproducible WAV examples | [README_EXAMPLES.md](README_EXAMPLES.md) |
+
+## Core Examples
+
+Render at the default house format of float32 / 192 kHz / 0 dBFS normalization:
+
+```bash
+cargo run -- render --output out/default.wav --duration 1.5 --style punish
+```
+
+Render explicit integer output:
+
+```bash
+cargo run -- render --output out/int24.wav --duration 1.5 --style buzz --sample-format int --bit-depth 24
+```
+
+Analyze a timeline instead of one whole-file score:
+
+```bash
+cargo run -- analyze out/default.wav --timeline --timeline-format csv --timeline-output out/default.timeline.csv
+```
+
+Use a contour preset while uglifying an input:
+
+```bash
+cargo run -- go out/input.wav \
+  --type glitch \
+  --level-contour presets/go_contours/12_step_pattern_01.json \
+  --output out/input.glitched.wav
+```
+
+Upmix while uglifying:
+
+```bash
+cargo run -- go out/input.wav \
+  --level 720 \
+  --type punish \
+  --upmix 5.1 \
+  --coords polar \
+  --locus 1.0,45.0,0.0 \
+  --trajectory orbit:1.0,3.0 \
+  --output out/input.51.wav
+```
+
+## Example Corpus
+
+The repo ships a `333`-file WAV corpus under `examples/audio/` plus exact reproduction commands in [README_EXAMPLES.md](README_EXAMPLES.md).
+
+That material intentionally lives out of the main README so the front page stays focused on orientation, not on a wall of embedded media and long command inventories.
+
+Regenerate the corpus from the repo root with:
+
+```bash
+./scripts/generate_example_corpus.sh
+```
+
+## Verification
+
+USG now treats verification as part of the product surface, not an afterthought.
+
+- CI checks Linux and macOS builds
+- CLI smoke tests cover core flows
+- `scripts/verify_repo.sh` audits repo structure and corpus expectations
+- analysis JSON now exposes score profile metadata so consumers can see which heuristic produced a score
+
+## Architecture Sketch
 
 ```mermaid
 flowchart LR
-  cli["usg"] --> render["render"]
-  cli --> analyze["analyze"]
-  cli --> pack["render-pack"]
-  cli --> speech["speech"]
-  cli --> go["go"]
-  cli --> chain["chain"]
-  cli --> presets["presets"]
-  cli --> styles["styles"]
-  cli --> bench["benchmark"]
-  cli --> marathon["marathon"]
-
-  render --> wav1["ugly WAV"]
-  speech --> wav2["chip-speech WAV"]
-  chain --> wav3["staged WAV"]
-  go --> wav4["re-uglified WAV"]
-  analyze --> report["text or JSON report"]
-  pack --> ranking["pack summary + ranking"]
-  presets --> contour["contours + chain presets"]
+  input["input WAV or render request"] --> core["render / chain / go"]
+  core --> wav["float64 internal processing"]
+  wav --> out["32-bit float WAV by default"]
+  out --> analyze["analyze basic / psycho profiles"]
+  analyze --> score["Colbys"]
+  analyze --> detail["component breakdown + timeline + JSON"]
 ```
 
-## Quick Start
-
-```bash
-cargo run -- render --output out/ugly.wav --duration 3 --style harsh
-cargo run -- render --output out/catastrophic.wav --duration 3 --style catastrophic
-cargo run -- speech --output out/voice.wav --text "HELLO FROM 1984" --profile sp0256 --primary-osc phoneme --secondary-osc mandelbrot --tertiary-osc strange
-cargo run -- analyze out/ugly.wav
-cargo run -- analyze out/ugly.wav --json
-cargo run -- analyze out/ugly.wav --model psycho --fft-size 2048 --hop-size 512
-cargo run -- render-pack --out-dir out/pack --model psycho --seed 12345
-cargo run -- go out/clean.wav --level 800 --type punish --output out/clean.go.wav
-cargo run -- go out/clean.wav --type punish --level-contour presets/go_contours/01_linear_curve_01.json --output out/clean_p01.go.wav
-cargo run -- chain --stages glitch,stutter,pop --output out/chain.wav --play
-cargo run -- styles
-cargo run -- presets
-cargo run -- presets --show 12_step_pattern_01
-cargo run -- backends
-cargo run -- benchmark --runs 5 --duration 1.0 --style glitch --jobs 12
-cargo run -- benchmark --runs 5 --duration 1.0 --style glitch --json-output out/bench.json --csv-output out/bench.csv
-cargo run -- render --output out/ugly_int24.wav --duration 3 --style punish --sample-format int --bit-depth 24
-cargo run -- marathon --out-dir out/marathon --count 256 --min-duration 0.1 --max-duration 600 --backend auto --jobs 12
-```
-
-Working directory note:
-
-- If your shell is already in `out/`, use `clean.wav` and `clean_preset.go.wav` instead of `out/clean.wav` and `out/clean_preset.go.wav`.
-- Preset paths are resolved from your current directory, so from `out/` use `../presets/go_contours/...`.
-
-## Bundled Corpus
-
-- `examples/audio/` contains a bundled 333-file example corpus.
-- [README_EXAMPLES.md](/Users/cleider/dev/UglySoundGenerator/README_EXAMPLES.md) documents the command used to make every shipped example WAV.
-- Regenerate the corpus from repo root with `./scripts/generate_example_corpus.sh`.
-- The corpus intentionally mixes `render`, `chain`, `go`, and `speech` paths so the examples exercise more than one subsystem.
-
-### Corpus Layout
-
-```mermaid
-flowchart LR
-  corpus["examples/audio"] --> seed["seed set<br/>hand-picked reference clips"]
-  corpus --> render["render grid<br/>style variations"]
-  corpus --> chain["chain grid<br/>preset and staged renders"]
-  corpus --> go["go contours<br/>re-uglified source material"]
-  corpus --> speech["speech chips<br/>profile + oscillator variations"]
-
-  seed --> seedDocs["README_EXAMPLES.md"]
-  render --> styleCompare["style comparison"]
-  chain --> presetCompare["preset comparison"]
-  go --> contourCompare["contour comparison"]
-  speech --> chipCompare["chip voice comparison"]
-```
-
-## Playable Examples
-
-The repo ships a large corpus of example WAVs under `examples/audio/`. The players below point directly at files that are already in the repository.
-
-If your GitHub client refuses to render embedded audio, every row also includes a direct WAV link.
-
-<details open>
-  <summary><strong>Seed Set</strong></summary>
-  <table>
-    <tr><td><code>00_source_hum.wav</code></td><td><a href="examples/audio/00_source_hum.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/00_source_hum.wav"></audio></td></tr>
-    <tr><td><code>01_harsh.wav</code></td><td><a href="examples/audio/01_harsh.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/01_harsh.wav"></audio></td></tr>
-    <tr><td><code>02_punish.wav</code></td><td><a href="examples/audio/02_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/02_punish.wav"></audio></td></tr>
-    <tr><td><code>04_ps1_grit.wav</code></td><td><a href="examples/audio/04_ps1_grit.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/04_ps1_grit.wav"></audio></td></tr>
-    <tr><td><code>09_rom_corruption.wav</code></td><td><a href="examples/audio/09_rom_corruption.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/09_rom_corruption.wav"></audio></td></tr>
-    <tr><td><code>11_streamed_glitch.wav</code></td><td><a href="examples/audio/11_streamed_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/11_streamed_glitch.wav"></audio></td></tr>
-  </table>
-</details>
-
-<details>
-  <summary><strong>Render Gallery</strong></summary>
-  <table>
-    <tr><td><code>012_render_harsh_v01.wav</code></td><td><a href="examples/audio/012_render_harsh_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/012_render_harsh_v01.wav"></audio></td></tr>
-    <tr><td><code>020_render_digital_v01.wav</code></td><td><a href="examples/audio/020_render_digital_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/020_render_digital_v01.wav"></audio></td></tr>
-    <tr><td><code>028_render_meltdown_v01.wav</code></td><td><a href="examples/audio/028_render_meltdown_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/028_render_meltdown_v01.wav"></audio></td></tr>
-    <tr><td><code>036_render_glitch_v01.wav</code></td><td><a href="examples/audio/036_render_glitch_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/036_render_glitch_v01.wav"></audio></td></tr>
-    <tr><td><code>052_render_buzz_v01.wav</code></td><td><a href="examples/audio/052_render_buzz_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/052_render_buzz_v01.wav"></audio></td></tr>
-    <tr><td><code>076_render_distort_v01.wav</code></td><td><a href="examples/audio/076_render_distort_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/076_render_distort_v01.wav"></audio></td></tr>
-    <tr><td><code>092_render_punish_v01.wav</code></td><td><a href="examples/audio/092_render_punish_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/092_render_punish_v01.wav"></audio></td></tr>
-    <tr><td><code>108_render_catastrophic_v01.wav</code></td><td><a href="examples/audio/108_render_catastrophic_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/108_render_catastrophic_v01.wav"></audio></td></tr>
-    <tr><td><code>124_render_lucky_v01.wav</code></td><td><a href="examples/audio/124_render_lucky_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/124_render_lucky_v01.wav"></audio></td></tr>
-  </table>
-</details>
-
-<details>
-  <summary><strong>Chain Presets</strong></summary>
-  <table>
-    <tr><td><code>132_chain_arcade_overheat_v01.wav</code></td><td><a href="examples/audio/132_chain_arcade_overheat_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/132_chain_arcade_overheat_v01.wav"></audio></td></tr>
-    <tr><td><code>144_chain_binaural_nuisance_v01.wav</code></td><td><a href="examples/audio/144_chain_binaural_nuisance_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/144_chain_binaural_nuisance_v01.wav"></audio></td></tr>
-    <tr><td><code>156_chain_chip_broken_clock_v01.wav</code></td><td><a href="examples/audio/156_chain_chip_broken_clock_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/156_chain_chip_broken_clock_v01.wav"></audio></td></tr>
-    <tr><td><code>168_chain_console_busfight_v01.wav</code></td><td><a href="examples/audio/168_chain_console_busfight_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/168_chain_console_busfight_v01.wav"></audio></td></tr>
-    <tr><td><code>180_chain_ps1_grit_v01.wav</code></td><td><a href="examples/audio/180_chain_ps1_grit_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/180_chain_ps1_grit_v01.wav"></audio></td></tr>
-    <tr><td><code>192_chain_wolf_fifth_panic_v01.wav</code></td><td><a href="examples/audio/192_chain_wolf_fifth_panic_v01.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/192_chain_wolf_fifth_panic_v01.wav"></audio></td></tr>
-  </table>
-</details>
-
-<details>
-  <summary><strong>Go / Contour Transforms</strong></summary>
-  <table>
-    <tr><td><code>06_go_punish.wav</code></td><td><a href="examples/audio/06_go_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/06_go_punish.wav"></audio></td></tr>
-    <tr><td><code>07_go_glitch_contour.wav</code></td><td><a href="examples/audio/07_go_glitch_contour.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/07_go_glitch_contour.wav"></audio></td></tr>
-    <tr><td><code>198_go_01_linear_curve_01_glitch.wav</code></td><td><a href="examples/audio/198_go_01_linear_curve_01_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/198_go_01_linear_curve_01_glitch.wav"></audio></td></tr>
-    <tr><td><code>232_go_12_step_pattern_01_punish.wav</code></td><td><a href="examples/audio/232_go_12_step_pattern_01_punish.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/232_go_12_step_pattern_01_punish.wav"></audio></td></tr>
-    <tr><td><code>294_go_33_morph_pattern_11_glitch.wav</code></td><td><a href="examples/audio/294_go_33_morph_pattern_11_glitch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/294_go_33_morph_pattern_11_glitch.wav"></audio></td></tr>
-    <tr><td><code>296_go_33_morph_pattern_11_lucky.wav</code></td><td><a href="examples/audio/296_go_33_morph_pattern_11_lucky.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/296_go_33_morph_pattern_11_lucky.wav"></audio></td></tr>
-  </table>
-</details>
-
-<details>
-  <summary><strong>Speech Chips</strong></summary>
-  <table>
-    <tr><td><code>297_speech_votrax-sc01_pulse.wav</code></td><td><a href="examples/audio/297_speech_votrax-sc01_pulse.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/297_speech_votrax-sc01_pulse.wav"></audio></td></tr>
-    <tr><td><code>300_speech_votrax-sc01_formant.wav</code></td><td><a href="examples/audio/300_speech_votrax-sc01_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/300_speech_votrax-sc01_formant.wav"></audio></td></tr>
-    <tr><td><code>305_speech_tms5220_buzz.wav</code></td><td><a href="examples/audio/305_speech_tms5220_buzz.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/305_speech_tms5220_buzz.wav"></audio></td></tr>
-    <tr><td><code>312_speech_sp0256_formant.wav</code></td><td><a href="examples/audio/312_speech_sp0256_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/312_speech_sp0256_formant.wav"></audio></td></tr>
-    <tr><td><code>319_speech_mea8000_koch.wav</code></td><td><a href="examples/audio/319_speech_mea8000_koch.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/319_speech_mea8000_koch.wav"></audio></td></tr>
-    <tr><td><code>323_speech_s14001a_buzz.wav</code></td><td><a href="examples/audio/323_speech_s14001a_buzz.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/323_speech_s14001a_buzz.wav"></audio></td></tr>
-    <tr><td><code>330_speech_c64-sam_formant.wav</code></td><td><a href="examples/audio/330_speech_c64-sam_formant.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/330_speech_c64-sam_formant.wav"></audio></td></tr>
-    <tr><td><code>332_speech_c64-sam_strange.wav</code></td><td><a href="examples/audio/332_speech_c64-sam_strange.wav">direct link</a></td><td><audio controls preload="none" src="examples/audio/332_speech_c64-sam_strange.wav"></audio></td></tr>
-  </table>
-</details>
-
-## Ugly Recipes (Many CLI Examples)
-
-`usg render` is now streamed for long renders, so you can generate very large files without allocating the whole waveform in RAM.
-
-Duration limits:
-
-- `usg render`: `0.1s` to `86400s` (24 hours)
-- `usg chain`: `0.1s` to `86400s` with automatic streaming for long renders
-
-### Fast short-hit ugliness
-
-```bash
-cargo run -- render --output out/hit_glitch.wav --duration 0.12 --style glitch
-cargo run -- render --output out/hit_pop.wav --duration 0.20 --style pop --gain 1.0
-cargo run -- render --output out/hit_punish.wav --duration 0.35 --style punish --normalize-dbfs -0.2
-cargo run -- render --output out/hit_spank.wav --duration 0.25 --style spank --seed 77
-cargo run -- render --output out/hit_distort.wav --duration 0.40 --style distort --backend cpu
-```
-
-### Mid-length brutal textures
-
-```bash
-cargo run -- render --output out/grind_buzz_30s.wav --duration 30 --style buzz --sample-rate 192000
-cargo run -- render --output out/grind_rub_45s.wav --duration 45 --style rub --gain 0.95
-cargo run -- render --output out/grind_wink_60s.wav --duration 60 --style wink --seed 555
-cargo run -- render --output out/grind_steal_90s.wav --duration 90 --style steal --normalize-dbfs 0
-cargo run -- render --output out/grind_lucky_120s.wav --duration 120 --style lucky --backend auto --jobs 12
-```
-
-### Multi-hour ugly exports
-
-```bash
-cargo run -- render --output out/ugly_1h_glitch.wav --duration 3600 --style glitch --backend auto --jobs 12
-cargo run -- render --output out/ugly_2h_punish.wav --duration 7200 --style punish --seed 9999 --backend auto --jobs 16
-cargo run -- render --output out/ugly_4h_distort.wav --duration 14400 --style distort --gain 0.9 --normalize-dbfs -0.3
-cargo run -- render --output out/ugly_8h_lucky.wav --duration 28800 --style lucky --backend auto --jobs 20
-cargo run -- render --output out/ugly_24h_harsh.wav --duration 86400 --style harsh --backend cpu --jobs 24
-cargo run -- render --output out/ugly_30m_catastrophic.wav --duration 1800 --style catastrophic --backend auto --jobs 24
-```
-
-### Extreme chain examples (ugly and uglier)
-
-```bash
-cargo run -- chain --stages glitch,stutter,pop --output out/chain_gsp.wav --duration 8 --play
-cargo run -- chain --stages style:punish,crush,gate,smear --output out/chain_pcgs.wav --duration 20
-cargo run -- chain --stages style:buzz,stutter,stutter,pop,smear --output out/chain_bssps.wav --duration 45
-cargo run -- chain --stages style:steal,gate,pop,crush --output out/chain_sgpc.wav --duration 60 --seed 42
-cargo run -- chain --stages style:lucky,smear,stutter,effect:pop --output out/chain_lssp.wav --duration 90
-cargo run -- chain --stages style:punish,stutter,crush,smear,pop --output out/chain_1h.wav --duration 3600 --backend auto --jobs 16
-```
-
-### Batch generate ugly libraries
-
-```bash
-for s in harsh digital meltdown glitch pop buzz rub hum distort spank punish steal catastrophic wink lucky; do
-  cargo run -- render --output "out/library/${s}_10m.wav" --duration 600 --style "$s" --backend auto --jobs 12
-done
-```
-
-### One-command mass generation (`usg marathon`)
-
-```bash
-cargo run -- marathon --out-dir out/marathon_1 --count 512 --min-duration 0.10 --max-duration 30 --backend auto --jobs 12
-cargo run -- marathon --out-dir out/marathon_2 --count 200 --min-duration 30 --max-duration 600 --styles glitch,punish,distort,steal --seed 4242
-cargo run -- marathon --out-dir out/marathon_3 --count 64 --min-duration 600 --max-duration 3600 --styles harsh,meltdown,buzz --backend cpu --jobs 20
-```
-
-Marathon writes a manifest file by default:
-
-- `<out-dir>/manifest.json` with style, duration, seed, and output path per file
-
-```bash
-for i in $(seq 1 40); do
-  cargo run -- render --output "out/micro/micro_${i}.wav" --duration 0.18 --style glitch --seed "$i"
-done
-```
-
-```bash
-for s in glitch punish lucky distort; do
-  for i in $(seq 1 12); do
-    cargo run -- render --output "out/cards/${s}_${i}.wav" --duration 15 --style "$s" --seed "$((1000+i))"
-  done
-done
-```
-
-### Render packs for ranking the ugliest candidates
-
-```bash
-cargo run -- render-pack --out-dir out/pack_full --duration 4 --model psycho --top 14 --backend auto --jobs 12
-cargo run -- render-pack --out-dir out/pack_violent --styles glitch,punish,distort,spank,steal --duration 20 --model psycho --top 5
-cargo run -- render-pack --out-dir out/pack_short --styles pop,glitch,lucky --duration 0.5 --model basic --top 3
-```
-
-### Benchmark and choose your backend
-
-```bash
-cargo run -- backends
-cargo run -- benchmark --runs 8 --duration 1.0 --style punish --jobs 16
-cargo run --features metal -- benchmark --runs 8 --duration 1.0 --style punish --jobs 16
-cargo run --features cuda -- benchmark --runs 8 --duration 1.0 --style punish --jobs 16
-```
-
-### Disk planning for very long files (float32 mono)
-
-- Rough size formula: `seconds * sample_rate * 4 bytes`
-- At `192000 Hz`: about `768 KB/s`, about `2.76 GB/hour`
-- 8 hours: about `22 GB`
-- 24 hours: about `66 GB`
-
-## Render Options
-
-```text
-usg render [OPTIONS]
-```
-
-- `-o, --output <PATH>`: Output WAV path (default: `ugly.wav`)
-- `-d, --duration <SECONDS>`: Duration in seconds (range: `0.1` to `86400`, default: `3.0`)
-- `-r, --sample-rate <HZ>`: Sample rate (default: `192000`)
-- `--seed <U64>`: Fixed seed for repeatable ugliness
-- `--style <...>`: Ugliness profile (default: `harsh`)
-- `--gain <0.0..1.0>`: Output gain (default: `0.8`)
-- `--normalize-dbfs <DBFS>`: Peak normalize target (default: `0.0`)
-- `--no-normalize`: Disable normalization
-- `--backend <auto|cpu|metal|cuda>`: Rendering backend (default: `auto`)
-- `--jobs <N>`: Worker count (`0` means auto core count)
-- `--gpu-drive <F64>`: GPU post-FX drive (overrides default/env)
-- `--gpu-crush-bits <F64>`: GPU post-FX bitcrush depth in bits
-- `--gpu-crush-mix <0..1>`: GPU post-FX dry/crushed blend
-
-## Go (Input -> Uglier)
-
-`usg go` takes an existing WAV file and pushes it to a target ugliness level in Colbys (`-1000..+1000`).
-
-```text
-usg go <INPUT.wav> [OPTIONS]
-```
-
-Important options:
-
-- `-o, --output <PATH>`: Output WAV path (default: `<input-stem>.go.wav`)
-- `--level <-1000..1000>`: Target ugliness in Colbys (default: `400`)
-- `--type <glitch|stutter|puff|punish|geek|dissonance-ring|dissonance-expand|random|lucky>`: Optional flavor (`random` when omitted)
-- `--upmix <mono|stereo|quad|5.1|7.1|custom:N>`: Optional surround upmix layout
-- `--coords <cartesian|polar>`: Coordinate system for spatial arguments
-- `--locus <a,b,c>`: Start source locus
-- `--seed <U64>`: Deterministic uglification
-- `--level-contour <PATH.json>`: Time-varying ugliness contour from JSON
-- `--level-contour-json <JSON>`: Time-varying ugliness contour inline JSON
-- `--trajectory <static|line:a,b,c|orbit:radius,turns>`: Source movement over file duration
-- `--normalize-dbfs <DBFS>` or `--no-normalize`
-- `--backend <auto|cpu|metal|cuda>`
-- `--jobs <N>`
-- `--gpu-drive <F64>`
-- `--gpu-crush-bits <F64>`
-- `--gpu-crush-mix <0..1>`
-
-Contour JSON schema:
-
-```json
-{
-  "version": 1,
-  "interpolation": "linear",
-  "points": [
-    { "t": 0.0, "level": 120 },
-    { "t": 0.35, "level": 900 },
-    { "t": 1.0, "level": 300 }
-  ]
-}
-```
-
-- `t`: normalized time from `0.0` to `1.0`
-- `level`: ugliness target in Colbys from `-1000` to `1000`
-- `version`: contour schema version, currently `1`
-- `interpolation`: `linear` or `step`
-
-Contour preset library:
-
-- 33 ready contour presets are included in `presets/go_contours/`
-- 11 chain presets are included in `presets/chains/`
-- open [presets/go_contours/README.md](/Users/cleider/dev/UglySoundGenerator/presets/go_contours/README.md) for usage
-
-Examples:
-
-```bash
-cargo run -- go out/clean.wav --level 300 --output out/clean_l300.go.wav
-cargo run -- go out/clean.wav --level 700 --type glitch --output out/clean_glitch.go.wav
-cargo run -- go out/clean.wav --level 900 --type punish --backend auto --jobs 12
-cargo run -- go out/clean.wav --level 1000 --type geek --normalize-dbfs -0.2
-cargo run -- go out/clean.wav --level 800 --type lucky --seed 1337
-cargo run -- go out/clean.wav --level 600 --type random --seed 2026
-cargo run -- go out/clean.wav --level 850 --type dissonance-ring --output out/clean_ringed.go.wav
-cargo run -- go out/clean.wav --level 780 --type dissonance-expand --output out/clean_expanded.go.wav
-cargo run -- go out/clean.wav --level 800 --type glitch --upmix 5.1 --coords cartesian --locus 0,1,0 --trajectory line:1,0,0 --output out/clean_51_move.go.wav
-cargo run -- go out/clean.wav --level 900 --type punish --upmix custom:12 --coords polar --locus 30,0,1.0 --trajectory orbit:1.2,4 --output out/clean_12ch_orbit.go.wav
-cargo run -- go out/clean.wav --type punish --level-contour-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"level":120},{"t":0.35,"level":900},{"t":1.0,"level":300}]}' --output out/clean_contour.go.wav
-cargo run -- go out/clean.wav --type glitch --level-contour presets/go_contours/12_step_pattern_01.json --output out/clean_contour_file.go.wav
-```
-
-If you are currently in `out/`, the same `go` command looks like this:
-
-```bash
-cargo run -- go clean.wav --type punish --level-contour ../presets/go_contours/01_linear_curve_01.json --output clean_preset.go.wav
-```
-
-## Chiptune Speech
-
-`usg speech` is now the active `v0.4` focus: text-to-chiptune speech synthesis modeled after classic speech-chip eras, with built-in text normalization, an approximate phoneme parser, chip-specific speech backends, and exportable phoneme timelines.
-
-### Speech Pipeline
-
-```mermaid
-flowchart LR
-  text["text or text-file"] --> normalizeText["text normalization"]
-  normalizeText --> parse["phoneme parser"]
-  parse --> mode["characters / words / sentences / paragraphs"]
-  mode --> params["phoneme timing + pitch + emphasis"]
-  params --> osc["primary + secondary + tertiary oscillators"]
-  osc --> chip["chip backend<br/>LPC / formant-grid / SAM / arcade PCM"]
-  chip --> fx["chip FX<br/>bitcrush / sample-hold / fold / chaos / robotize / drift"]
-  fx --> finish["gain + optional normalize"]
-  finish --> wav["speech WAV + timeline JSON + analysis JSON"]
-```
-
-Current speech-chip-inspired profiles:
-
-- `votrax-sc01`, `tms5220`, `sp0256`, `mea8000`
-- `s14001a`, `c64-sam`, `arcadey90s`, `handheld-lcd`
-
-Current speech oscillators:
-
-- `sine`, `pulse`, `triangle`, `saw`, `noise`, `buzz`
-- `formant`, `vowel`, `ring`, `fold`, `organ`, `fm`
-- `sync`, `lfsr`, `grain`, `chirp`, `subharmonic`, `reed`
-- `click`, `comb`, `koch`, `mandelbrot`, `strange`, `phoneme`
-
-Text input can be a single letter, a word, a sentence, or a full paragraph:
-
-```bash
-cargo run -- speech --output out/letter_a.wav --text "A" --input-mode character --profile votrax-sc01
-cargo run -- speech --output out/word_robot.wav --text "ROBOT" --input-mode word --profile tms5220 --primary-osc pulse --secondary-osc formant
-cargo run -- speech --output out/sentence.wav --text "HELLO WORLD. THIS CHIP IS VERY CROSS." --input-mode sentence --profile sp0256 --primary-osc phoneme --secondary-osc mandelbrot --tertiary-osc strange
-cargo run -- speech --output out/paragraph.wav --text-file speech.txt --input-mode paragraph --profile c64-sam --primary-osc koch --secondary-osc buzz --tertiary-osc ring
-```
-
-The command intentionally exposes a lot of shaping parameters already. Highlights:
-
-- text and segmentation: `--text`, `--text-file`, `--input-mode`, `--no-normalize-text`
-- chip voicing: `--profile`, `--pitch-hz`, `--pitch-jitter`, `--vibrato-hz`, `--vibrato-depth`, `--monotone`, `--glide`
-- oscillator stack: `--primary-osc`, `--secondary-osc`, `--tertiary-osc`, `--duty-cycle`, `--ring-mix`, `--sub-mix`
-- speech color: `--formant-shift`, `--vowel-mix`, `--consonant-noise`, `--nasal`, `--throat`, `--buzz`, `--hiss`
-- chip destruction: `--bitcrush-bits`, `--sample-hold-hz`, `--fold`, `--chaos`, `--robotize`, `--resampler-grit`, `--drift`
-- timing: `--units-per-second`, `--attack-ms`, `--release-ms`, `--word-gap-ms`, `--sentence-gap-ms`, `--paragraph-gap-ms`, `--punctuation-gap-ms`
-- phrasing: `--word-accent`, `--sentence-lilt`, `--paragraph-decline`
-- exports: `--timeline-json`, `--analysis-json`
-
-Example "maximal nonsense" render:
-
-```bash
-cargo run -- speech --output out/maximal_speech.wav --text "UGLY SOUND GENERATOR NOW SPEAKS IN FRACTALS." --profile handheld-lcd --primary-osc phoneme --secondary-osc koch --tertiary-osc strange --pitch-hz 132 --pitch-jitter 0.12 --vibrato-hz 6.5 --vibrato-depth 0.08 --formant-shift 1.2 --consonant-noise 0.9 --buzz 0.45 --fold 3.8 --chaos 0.8 --robotize 0.55 --bitcrush-bits 5.5 --sample-hold-hz 6800 --drift 0.12 --resampler-grit 0.7
-cargo run -- speech --output out/parsed.wav --text "Version 4 now talks in phonemes." --profile c64-sam --primary-osc vowel --secondary-osc fm --tertiary-osc comb --timeline-json out/parsed.timeline.json --analysis-json out/parsed.analysis.json
-```
-
-## Speech Pack
-
-`usg speech-pack` renders all 8 chip profiles for the same text, analyzes each, estimates intelligibility, and produces a ranked report:
-
-### Speech Pack Ranking Flow
-
-```mermaid
-flowchart LR
-  text["shared text"] --> render["render all chip profiles"]
-  render --> wavs["N profile WAVs"]
-  wavs --> ugly["ugliness analysis"]
-  wavs --> intel["intelligibility heuristic"]
-  ugly --> merge["merge metrics"]
-  intel --> merge
-  merge --> rank["rank-by<br/>ugliness / intelligibility / balanced"]
-  rank --> outputs["summary.json<br/>ranking.csv<br/>report.html"]
-```
-
-```bash
-cargo run -- speech-pack --text "UGLY SOUND GENERATOR" --out-dir out/speech_pack
-cargo run -- speech-pack --text-file speech.txt --out-dir out/speech_pack --model psycho
-```
-
-Outputs per run:
-
-- `<out-dir>/<N>_<profile>.wav` — one file per chip profile
-- `<out-dir>/summary.json` — full analysis data for each profile
-- `<out-dir>/ranking.csv` — profiles ranked by ugliness, intelligibility, or a balanced blend
-- `<out-dir>/report.html` — listenable HTML report with audio players
-
-Key flags:
-
-- `--text` / `--text-file`: text to synthesize across all profiles
-- `--input-mode`: `auto`, `character`, `word`, `sentence`, `paragraph`
-- `--pitch-hz`: base pitch in Hz
-- `--model`: analysis model (`basic` or `psycho`, default `psycho`)
-- `--rank-by`: `ugliness`, `intelligibility`, or `balanced` (default)
-- `--top <N>`: how many top ugliest entries to print (default 5)
-- `--sample-rate`, `--backend`, `--jobs`: standard render controls
-
-## Mutate
-
-`usg mutate` takes an input WAV, applies N random ugly mutations (random flavor + level + seed), analyzes each result, and ranks by ugliness delta from the original:
-
-```bash
-cargo run -- mutate out/clean.wav --out-dir out/mutate --count 8
-cargo run -- mutate out/clean.wav --out-dir out/mutate --count 12 --level-min 600 --level-max 1000 --model psycho
-```
-
-Outputs:
-
-- `<out-dir>/<N>_<flavor>_l<level>.wav` — each mutated variant
-- `<out-dir>/mutate_summary.json` — all variants ranked by ugliness delta
-
-Key flags:
-
-- `--count <N>`: number of random mutations (default 8)
-- `--level-min` / `--level-max`: ugliness range per mutation in Colbys (default -200..+900)
-- `--seed`: optional seed for reproducible mutations
-- `--model`: analysis model (default `psycho`)
-
-## Normalize Pack
-
-`usg normalize-pack` reads every `.wav` in a directory and applies `go` to bring each one to a target ugliness level:
-
-```bash
-cargo run -- normalize-pack --in-dir out/raw --out-dir out/normalized --level 700
-cargo run -- normalize-pack --in-dir out/raw --out-dir out/normalized --level 850 --type punish --model basic
-```
-
-Outputs:
-
-- `<out-dir>/<filename>.wav` — normalized file (same name as input)
-- `<out-dir>/normalize_manifest.json` — before/after Colbys for every file
-
-Key flags:
-
-- `--in-dir`: source directory of `.wav` files
-- `--out-dir`: destination directory
-- `--level`: target ugliness in Colbys `-1000..1000` (default 400)
-- `--type`: go flavor (`glitch`, `punish`, `dissonance-ring`, etc.)
-- `--model`: analysis model for pre/post scoring (default `basic`)
-
-## Evolve
-
-`usg evolve` breeds uglier renders across generations using a genetic algorithm. Each generation renders a population, evaluates ugliness, keeps the top half as elite parents, and derives offspring by XOR-mutating seeds (with occasional style crossover):
-
-```bash
-cargo run -- evolve --out-dir out/evolve --generations 5 --population 8
-cargo run -- evolve --out-dir out/evolve --generations 10 --population 16 --style harsh --duration 2.0
-```
-
-Outputs:
-
-- `<out-dir>/gen<N>/<idx>_<style>_s<seed>.wav` — every individual rendered
-- `<out-dir>/lineage.json` — full generation history + champion
-
-Key flags:
-
-- `--generations <N>`: number of generations (default 5)
-- `--population <N>`: individuals per generation (default 8)
-- `--style`: lock to one style, or omit to explore all 15
-- `--duration`: render length per individual (default 1.0s)
-- `--model`: fitness scoring model (default `psycho`)
-- `--seed`: optional base seed for generation 0
-
-## Analyze Output
-
-`usg analyze` reports:
-
-### Analysis Pipeline
-
-```mermaid
-flowchart LR
-  wav["input WAV"] --> mono["mono mixdown / stereo pair handling"]
-  mono --> basic["basic metrics<br/>peak / RMS / crest / clipping / ZCR / harshness"]
-  mono --> stft["STFT"]
-  stft --> psycho["psycho model<br/>roughness / sharpness / dissonance / transient / harmonicity"]
-  basic --> score["ugly index"]
-  psycho --> score
-  score --> out["terminal report or JSON"]
-```
-
-- Peak and RMS level
-- Crest factor
-- Zero crossing rate
-- Clipped sample percentage
-- Harshness ratio
-- Composite ugliness score in Colbys (`-1000..+1000`)
-
-Use `--json` to emit machine-readable output for scripting:
-
-```bash
-cargo run -- analyze out/ugly.wav --json
-```
-
-### Timeline mode
-
-`--timeline` computes ugliness per sliding window and emits the result instead of a whole-file summary. Useful for finding where in a sound the ugliness peaks:
-
-```bash
-cargo run -- analyze out/ugly.wav --timeline
-cargo run -- analyze out/ugly.wav --timeline --timeline-format csv --timeline-output out/ugly.timeline.csv
-cargo run -- analyze out/ugly.wav --timeline --timeline-window-ms 100 --timeline-hop-ms 50
-```
-
-Output columns: `time_s`, `colbys`, `clipped_pct`, `harshness_ratio`, `zero_crossing_rate`.
-
-Flags:
-
-- `--timeline-window-ms`: window length in ms (default 50)
-- `--timeline-hop-ms`: hop between windows in ms (default 25)
-- `--timeline-format`: `json` (default) or `csv`
-- `--timeline-output`: write to file instead of stdout
-
-Use `--joke` when you want the analyzer to also compute the absurd `UglierBasis` score described later in this README:
-
-```bash
-cargo run -- analyze out/ugly.wav --model psycho --joke
-```
-
-Analyze supports two scoring models:
-
-- `--model basic`: Fast time-domain proxy (default)
-- `--model psycho`: FFT-based psychoacoustic approximation with component breakdown
-
-For stereo files, psycho analysis uses cross-channel peak interactions for `binaural_beat_norm`; mono files use a conservative close-partial fallback estimator.
-
-The psycho report now includes harmonicity/inharmonicity, binaural-beat pressure, beat-conflict, tritone-tension, and wolf-fifth components in addition to clip/roughness/sharpness/dissonance/transients.
-
-Psycho model options:
-
-- `--fft-size <N>`: STFT window length (default: `2048`)
-- `--hop-size <N>`: STFT hop length (default: `512`)
-
-Render styles currently available:
-
-- `harsh`, `digital`, `meltdown`, `catastrophic`
-- `glitch`, `pop`, `buzz`, `rub`, `hum`, `distort`
-- `spank`, `punish`, `steal`, `wink`, `lucky`
-
-Chain effects currently available:
-
-- `stutter`, `pop`, `crush`, `gate`, `smear`
-- `dissonance-ring`: paper-derived spectral ring modulation using Kameoka-Kuriyagawa roughness spacing
-- `dissonance-expand`: paper-derived spectral dynamics expansion that exaggerates beating envelopes inside Bark-like bands
-
-Notes for chain stage parsing:
-
-- unprefixed names prefer effects when ambiguous (`pop` resolves to effect)
-- use `style:<name>` or `effect:<name>` for explicit control
-- example: `--stages style:pop,stutter,effect:pop`
-
-## Chain Pipeline
-
-`usg chain` lets you compose synthesis and effect stages in order.
-
-### Chain And Go Signal Flow
-
-```mermaid
-flowchart LR
-  synth["style render"] --> chainbuf["working buffer"]
-  input["input WAV"] --> gofx["go flavor + contour"]
-  gofx --> chainbuf
-  chainbuf --> stages["ordered stages<br/>styles + effects + presets"]
-  stages --> backend["cpu / metal / cuda post-FX plan"]
-  backend --> finish["gain + normalize + encode"]
-  finish --> out["output WAV"]
-```
-
-Example from your workflow:
-
-```bash
-cargo run -- chain --stages glitch,stutter,pop --output out/glitch_stutter_pop.wav --play
-cargo run -- chain --preset ps1_grit --output out/ps1_grit.wav
-cargo run -- chain --stages style:hum,dissonance-ring,dissonance-expand --output out/paper_dissonancizer.wav --duration 6
-```
-
-Useful options:
-
-- `--stages <A,B,C>`: ordered stage list (required)
-- `--output <PATH>`
-- `--duration <SECONDS>`
-- `--sample-rate <HZ>`
-- `--seed <U64>`
-- `--gain <0.0..1.0>`
-- `--normalize-dbfs <DBFS>`
-- `--no-normalize`
-- `--backend <auto|cpu|metal|cuda>`
-- `--jobs <N>`
-- `--gpu-drive <F64>`
-- `--gpu-crush-bits <F64>`
-- `--gpu-crush-mix <0..1>`
-- `--play`: attempt automatic playback after rendering
-
-Chain now streams automatically for long durations, so multi-hour chain exports do not require loading the full signal into memory.
-
-### Paper-derived dissonancizers
-
-Two chain/go processes are now modeled after Hoffman and Cook's DAFx-08 paper on real-time dissonance augmentation:
-
-- `dissonance-ring`: splits the signal into third-octave-ish bands and ring-modulates each band near the Kameoka-Kuriyagawa maximum-roughness spacing.
-- `dissonance-expand`: splits the signal into Bark-like bands and exaggerates fast amplitude modulation while re-normalizing slower dynamics.
-
-```mermaid
-flowchart LR
-  x["input signal"] --> fb["subband filterbank"]
-
-  fb --> ringbands["third-octave-ish bands"]
-  ringbands --> ringmod["per-band ring modulation<br/>m = 0.5 * max-roughness spacing"]
-  ringmod --> ringsum["remix to output"]
-
-  fb --> barkbands["Bark-like bands"]
-  barkbands --> env["fast + slow envelope followers"]
-  env --> expand["spectral dynamics expansion<br/>fast beating emphasized, slow level re-normalized"]
-  expand --> expsum["remix to output"]
-```
-
-Examples:
-
-```bash
-cargo run -- chain --stages style:hum,dissonance-ring --output out/hum_max_rough.wav --duration 4
-cargo run -- chain --stages style:hum,dissonance-ring,dissonance-expand --output out/hum_hyper_rough.wav --duration 4
-cargo run -- go out/clean.wav --type dissonance-ring --level 900 --output out/clean_max_rough.go.wav
-cargo run -- go out/clean.wav --type dissonance-expand --level 800 --output out/clean_beat_bloated.go.wav
-```
-
-## How To Make It Even Uglier
-
-If the default presets are only moderately offensive, the fastest path to true ugliness is layering multiple failure modes instead of just turning up one knob.
-
-Practical escalation tactics:
-
-- Start with `catastrophic` when you want the generator to skip the warmup and get straight to the bad decisions.
-- Stack a hostile synth style with several effects: `catastrophic`, `punish`, `steal`, and `buzz` get worse when followed by `stutter`, `crush`, `gate`, and `smear`.
-- The nastier styles now include named fractal ingredients: Koch-style quasi-oscillators, Mandelbrot escape-drive oscillators, and strange-attractor drift, so the waveform can spiral into self-similar little disasters instead of repeating one cleanly ugly cycle.
-- Re-uglify an already ugly render with `usg go --level 900..1000` so the source material starts damaged before the contour logic makes new mistakes.
-- Use step-pattern contours for abrupt jumps instead of smooth ramps; ugly sounds get more irritating when they cannot decide what they are doing.
-- Favor high sample rates plus clipping/normalization pressure, because more bandwidth means more room for alias-ish drama, buzz, and transient shrapnel.
-- Render a pack, analyze with `--model psycho`, then take the ugliest winner and feed it back through `go` or `chain` again.
-- Add spatial motion with `--trajectory orbit:...` or a custom upmix so the ugliness is no longer politely centered in one speaker.
-
-Examples:
-
-```bash
-cargo run -- render --output out/pre_ruined.wav --duration 12 --style catastrophic --seed 666 --sample-rate 192000
-cargo run -- chain --stages style:steal,stutter,crush,gate,smear,effect:pop --output out/structurally_offensive.wav --duration 20 --seed 4242
-cargo run -- go out/structurally_offensive.wav --level 1000 --type punish --level-contour presets/go_contours/22_step_pattern_11.json --output out/absolutely_not.wav
-cargo run -- go out/pre_ruined.wav --level 970 --type geek --upmix 5.1 --coords polar --locus 35,0,1.0 --trajectory orbit:1.5,9 --output out/moving_problem.wav
-cargo run -- render-pack --out-dir out/pack_dread --styles catastrophic,punish,steal,glitch,distort --duration 8 --model psycho --top 4
-cargo run -- analyze out/absolutely_not.wav --model psycho --fft-size 4096 --hop-size 256
-```
-
-Suggested escalation ladder:
-
-1. Render something ugly.
-2. Chain effects until the waveform looks like it has personal grievances.
-3. Run `go` at `--level 1000` with a step contour.
-4. Analyze the result and keep whichever file scores closest to “audio war crime.”
-
-## Render Pack
-
-`usg render-pack` creates a full style pack in one shot:
-
-- renders one WAV per style
-- analyzes each output with `basic` or `psycho` model
-- writes a JSON summary with full entries and a ranked leaderboard
-
-Example:
-
-```bash
-cargo run -- render-pack --out-dir out/pack --model psycho --seed 12345 --top 8
-cargo run -- render-pack --styles glitch,punish,lucky --out-dir out/pack_focus
-```
-
-Useful options:
-
-- `--out-dir <PATH>`: output folder for WAV files
-- `--summary <PATH>`: summary JSON path (default: `<out-dir>/summary.json`)
-- `--csv <PATH>`: ranking CSV path (default: `<out-dir>/ranking.csv`)
-- `--html <PATH>`: HTML listening report path (default: `<out-dir>/report.html`)
-- `--duration <SECONDS>`
-- `--sample-rate <HZ>`
-- `--seed <U64>`: base seed for deterministic per-style seeds
-- `--gain <0.0..1.0>`
-- `--normalize-dbfs <DBFS>`
-- `--no-normalize`
-- `--styles <A,B,C>`: optional comma-separated subset of styles
-- `--model <basic|psycho>`
-- `--fft-size <N>` and `--hop-size <N>` for psycho analysis
-- `--top <N>`: number of top ugliest entries printed to terminal
-- `--backend <auto|cpu|metal|cuda>`
-- `--jobs <N>`: parallel workers for render/analyze tasks
-- `--gpu-drive <F64>`
-- `--gpu-crush-bits <F64>`
-- `--gpu-crush-mix <0..1>`
-
-Example high-throughput pack render:
-
-```bash
-cargo run -- render-pack --out-dir out/pack_gpu --backend auto --jobs 24 --model psycho
-```
-
-## Backends And Parallelism
-
-Backends are runtime-selectable:
-
-- `cpu`: portable baseline
-- `metal`: Apple Metal-targeted backend path (requires `--features metal` on macOS)
-- `cuda`: NVIDIA CUDA-targeted backend path (requires `--features cuda`, CUDA driver, and NVRTC runtime)
-- `auto`: picks Metal first, then CUDA, then CPU
-
-Backend status:
-
-```bash
-cargo run -- backends
-```
-
-Build with backend feature flags:
-
-```bash
-cargo run --features metal -- render --style glitch --backend metal --jobs 16
-cargo run --features cuda -- render-pack --backend cuda --jobs 32
-```
-
-`benchmark` command:
-
-```bash
-cargo run -- benchmark --runs 6 --duration 0.8 --style punish --jobs 16
-```
-
-Useful benchmark flags:
-
-- `--json-output <PATH>`: write a structured benchmark report with per-run timings
-- `--csv-output <PATH>`: write a flat ranking CSV for spreadsheets or plotting
-- `--sample-format <float|int>` and `--bit-depth <16|24|32>`: benchmark alternate file encodings
-
-- `--runs <N>`: repeated renders per backend
-- `--duration <SECONDS>`
-- `--sample-rate <HZ>`
-- `--style <STYLE>`
-- `--jobs <N>`
-- `--gpu-drive <F64>`
-- `--gpu-crush-bits <F64>`
-- `--gpu-crush-mix <0..1>`
-
-`marathon` command:
-
-```bash
-cargo run -- marathon --out-dir out/marathon --count 1000 --min-duration 0.1 --max-duration 120 --backend auto --jobs 24
-```
-
-Useful marathon flags:
-
-- `--out-dir <PATH>`
-- `--count <N>`
-- `--min-duration <SECONDS>`
-- `--max-duration <SECONDS>`
-- `--styles <A,B,C>`
-- `--seed <U64>`
-- `--sample-rate <HZ>`
-- `--gain <0.0..1.0>`
-- `--normalize-dbfs <DBFS>` or `--no-normalize`
-- `--backend <auto|cpu|metal|cuda>`
-- `--jobs <N>`
-- `--manifest <PATH>`
-
-Current v-next backend note:
-
-- command/API level backend selection is stable now
-- DSP remains 64-bit and deterministic
-- backend post-processing executes native device kernels when selected (`metal`/`cuda`) with GPU drive+bitcrush+clip post-FX
-- CPU remains the reference path and fallback target
-
-GPU post-FX tuning can be configured by CLI flags or environment variables:
-
-- `USG_GPU_DRIVE`
-- `USG_GPU_CRUSH_BITS`
-- `USG_GPU_CRUSH_MIX`
-
-Benchmarking:
-
-- `usg benchmark` runs repeatable timed renders for each available backend
-- output is average render time per backend, ranked fastest to slowest
-
-## Ugliness Index (Colbys)
-
-Ugliness is measured in **Colbys (Co)**, ranging from **-1000** (cleanest) through **0** (neutral) to **+1000** (catastrophically ugly).
-
-### Current formula (implemented)
-
-Let \(x[n]\) be the mono waveform, \(N\) samples total:
-
-```math
-\mathrm{clipped\_pct}
-=
-\frac{100}{N}\sum_{n=0}^{N-1}\mathbf{1}\{|x[n]| \ge 0.98\}
-```
-
-```math
-\mathrm{zero\_cross\_rate}
-=
-\frac{1}{N}\sum_{n=1}^{N-1}\mathbf{1}\{\mathrm{sign}(x[n]) \ne \mathrm{sign}(x[n-1])\}
-```
-
-```math
-\mathrm{harshness\_ratio}
-=
-\sqrt{
-\frac{\sum_{n=1}^{N-1}\left(x[n]-x[n-1]\right)^2}
-{\max\left(\sum_{n=0}^{N-1}x[n]^2,\varepsilon\right)}
-}
-```
-
-```math
-\mathrm{colbys}
-=
-\mathrm{clamp}\!\left(
-20\left(1.6\,\mathrm{clipped\_pct}
-+45\,\mathrm{harshness\_ratio}
-+200\,\mathrm{zero\_cross\_rate}\right)
-- 1000,\;
--1000,\;1000
-\right)
-```
-
-This exact computation lives in [src/lib.rs](/Users/cleider/dev/UglySoundGenerator/src/lib.rs).
-
-### Why these terms map to perceived ugliness
-
-- `clipped_pct`: hard limiting/clipping creates high-order harmonics and audible crackle.
-- `harshness_ratio`: frame-to-frame slope energy is a cheap proxy for broadband, buzzy, non-smooth content.
-- `zero_cross_rate`: strongly correlated with high-frequency/noisy content and perceived “edge.”
-
-In psychoacoustic terms, the metric intentionally rewards traits associated with roughness, sharpness, and distortion fatigue.
-
-### Interpretation guide
-
-- `-1000` to `-600`: pristine / barely processed
-- `-600` to `-200`: mostly tame
-- `-200` to `+200`: noticeably abrasive
-- `+200` to `+600`: aggressively ugly
-- `+600` to `+1000`: catastrophic / noise-weapon territory
-
-## Psychoacoustic Math Roadmap
-
-`usg` now includes an initial psycho model (`--model psycho`) that approximates this framework using STFT-derived features.
-
-The model computes these normalized components:
-
-- `clip_norm`
-- `harshness_norm`
-- `roughness_norm`
-- `sharpness_norm`
-- `dissonance_norm`
-- `transient_norm`
-- `harmonicity_norm`
-- `inharmonicity_norm`
-- `binaural_beat_norm`
-- `beat_conflict_norm`
-- `tritone_tension_norm`
-- `wolf_fifth_norm`
-
-Then fuses them:
-
-```math
-\begin{aligned}
-\mathrm{weighted\_sum} =\;& -4.05
-+ 1.6\,\mathrm{clip\_norm}
-+ 1.3\,\mathrm{roughness\_norm}
-+ 1.0\,\mathrm{sharpness\_norm}
-+ 1.0\,\mathrm{dissonance\_norm} \\
-&+ 1.2\,\mathrm{transient\_norm}
-+ 0.9\,\mathrm{harshness\_norm}
-+ 1.25\,\mathrm{inharmonicity\_norm}
-+ 0.85\,\mathrm{binaural\_beat\_norm} \\
-&+ 1.05\,\mathrm{beat\_conflict\_norm}
-+ 0.85\,\mathrm{tritone\_tension\_norm}
-+ 0.75\,\mathrm{wolf\_fifth\_norm}
-- 0.45\,\mathrm{harmonicity\_norm}
-\end{aligned}
-```
-
-```math
-\mathrm{colbys\_psycho} = \mathrm{clamp}\!\left(2000\,\sigma(\mathrm{weighted\_sum}) - 1000,\;-1000,\;1000\right)
-```
-
-The deeper research target remains critical-band analysis:
-
-1. Time-frequency analysis:
-   ```math
-   X(k,m)=\mathrm{STFT}\{x[n]\}
-   ```
-2. Bark-band energy:
-   ```math
-   E_b(m)=\sum_k |X(k,m)|^2 H_b(k)
-   ```
-3. Specific loudness:
-   ```math
-   N'(z,m)=f(E_z(m)),\quad N(m)=\int N'(z,m)\,dz
-   ```
-4. Sharpness (high-frequency weighted loudness):
-   ```math
-   S(m)=\frac{\int z\,g(z)\,N'(z,m)\,dz}{\int N'(z,m)\,dz}
-   ```
-5. Roughness (modulation around ~30-150 Hz in each band):
-   ```math
-   R(m)=\sum_b w_b M_b(m)\exp\!\left(-\left(\frac{f_{\mathrm{mod},b}-70}{\sigma}\right)^2\right)
-   ```
-6. Tonal dissonance (pairwise partial beating):
-   ```math
-   D(m)=\sum_i\sum_j a_i a_j\left(e^{-\alpha\Delta f_{ij}}-e^{-\beta\Delta f_{ij}}\right)
-   ```
-
-Then a calibrated composite:
-
-```math
-U = 1000\,\sigma\!\left(
-w_c\,\mathrm{clip\_norm}
-+ w_r\,\mathrm{rough\_norm}
-+ w_s\,\mathrm{sharp\_norm}
-+ w_d\,\mathrm{dissonance\_norm}
-+ w_t\,\mathrm{transient\_norm}
-\right)
-```
-
-where each term is normalized into a comparable range and then combined by hand-tuned weights. This is a pragmatic psychoacoustic proxy, not a claim of formal listening-test calibration.
-
-## The UglierBasis Equation
-
-This section is intentionally not the real model. It is a ceremonial overreaction for anyone who feels a normal ugliness score is insufficiently dramatic and also insufficiently covered in summation symbols.
-
-For fun, the analyzer now has a matching `--joke` mode that computes a real `UglierBasis` score from the measured clip/roughness/sharpness/dissonance family and prints a verdict such as `academically ugly` or `please turn that off`.
-
-It is now written as a staged bureaucracy of sub-terms so the renderer does not spontaneously resign.
-
-Renderer-safe headline equation:
-
-```text
-UglierBasis(x) = 1000 * sigmoid(Phi_1 + Phi_2 + Phi_3 + Phi_4 + Phi_5 + Phi_6 - lambda * Phi_7)
-```
-
-Renderer-safe pseudo-math for the sub-terms:
-
-- `Phi_1`: a triple sum over time windows, Bark bands, and powers `q`, with the clip-rough-sharp-dissonant core in the numerator and a harmonicity-loudness-stereo mismatch denominator underneath it.
-- `Phi_2`: the alias-spray, zipper-noise, and quantization-shame tribunal, divided by still more harmonicity and envelope bureaucracy.
-- `Phi_3`: a product term where modulation glare, vibrato malpractice, and cadence collapse compound multiplicatively, then get normalized by a separate gate-surprise product.
-- `Phi_4`: the trigonometric wobble chamber, where sine and cosine are used to make the ugliness oscillate instead of merely sitting there.
-- `Phi_5`: a double sum cross-coupling overtone hostility, envelope panic, notch cruelty, stereo argument, jitter, and vibrato malpractice.
-- `Phi_6`: the ceremonial tensor-bureaucracy layer, with `kappa_uv` constants distributed across a `sum_u product_v` structure purely for institutional intimidation.
-- `Phi_7`: the harmonicity relief term, whose only job is to lower the score a little before the rest of the equation raises it again out of spite.
-
-Where the coefficient families are, of course, completely serious:
-
-- `α`: the PDQ Bach coefficients. They control how much the first bureaucracy chamber values clip arrogance, roughness, sharpness, dissonance, and other forms of respectable nonsense.
-- `β`: the John Cleese coefficients. These supervise the Ministry of Silly Modulations, especially cases involving modulation glare, vibrato malpractice, and cadence collapse.
-- `γ`: the Mr. Bean coefficients. They do not explain themselves verbally; they simply make the ugliness wobble in a way that becomes everybody else's problem.
-- `δ`: the Buster Keaton coefficients. These handle deadpan cross-couplings between overtone hostility, envelope panic, stereo argument, and jitter without ever admitting the structure is collapsing.
-- `κ`: the Monty Python administrative constants. They add ceremonial tensor bureaucracy because no absurd model is complete without one more committee.
-- `λ`: the little Inspector Clouseau relief term. It tries to reduce the score when harmonicity appears, but usually trips over its own feet and fails to restore dignity.
-
-### Radical explanation of the nonsense
-
-The fake theorem is simple in spirit: a sound becomes truly ugly when it is clipped, rough, bright, unstable, dissonant, badly behaved in time, and somehow also smug about it.
-
-Variable roster:
-
-- `C`: clip arrogance, or how confidently the waveform slams into the rails.
-- `R`: roughness, the sandpaper component.
-- `S`: sharpness, the “why is this so pointy?” factor.
-- `D`: dissonance, the intervallic argument.
-- `T`: transient density, the number of tiny jump-scares per second.
-- `H`: harmonicity, included mainly so the equation can punish anything too musically coherent.
-- `I`: inharmonicity, where partials stop cooperating.
-- `B`: binaural beat pressure, the left-right disagreement tax.
-- `F`: beat conflict, because one pulse of annoyance is never enough.
-- `W`: wolf-fifth tension, for the medieval “something is wrong here” sensation.
-- `M`: modulation glare, describing wobble that should have stayed in the lab.
-- `G`: gate surprise, the abruptness with which sound appears to be switched by an unreliable electrician.
-- `P`: pop density, or crackle-per-second.
-- `Q`: quantization shame, the moral cost of brutal bit depth reduction.
-- `Z`: zipper noise, the sonic equivalent of a broken jacket.
-- `L`: loudness lurch, measuring how much the level behaves like a staircase in an earthquake.
-- `O`: overtone hostility, when upper partials start making eye contact.
-- `A`: alias spray, the confetti cannon of spectral regret.
-- `E`: envelope panic, when attack and decay both overreact.
-- `N`: notch cruelty, the weirdly mean filtering term.
-- `Y`: hysteresis squeal, a totally serious quantity that definitely exists because I wrote it down.
-- `X`: stereo argument, tracking how hard the channels disagree about reality.
-- `J`: jitter, for timing uncertainty with commitment issues.
-- `V`: vibrato malpractice, when pitch motion becomes a legal matter.
-- `K`: cadence collapse, which penalizes any ending that fails to end with dignity.
-
-How the monster works:
-
-- The first fraction triple-sums over time windows, Bark bands, and whatever `q` is supposed to mean this week, so the equation immediately establishes that nobody is leaving the building quickly.
-- The second fraction exists to punish the cursed alliance of aliasing, zipper noise, and quantization shame using another fraction nested inside a fraction, which is the traditional sign of scientific confidence.
-- The product term says ugliness compounds multiplicatively once modulation glare, vibrato malpractice, and cadence collapse begin cooperating in bad faith.
-- The trigonometric block makes the ugliness oscillate, because static unpleasantness is amateur work; true ugliness should precess.
-- The fourth fraction cross-couples overtone hostility, envelope panic, stereo argument, jitter, and notch cruelty so every subsystem can blame every other subsystem.
-- The `\sum\prod` block is the ceremonial tensor bureaucracy layer. It adds absolutely no interpretability and therefore feels academically authentic.
-- The final negative harmonicity term is the tiny civilized voice in the room: musical coherence still reduces the score a little, but it now has to survive six separate bureaucratic tribunals first.
-
-Practical interpretation:
-
-- If `C`, `R`, `S`, `D`, `A`, `Z`, and `Q` are all high, the sound is not just ugly; it is academically ugly.
-- If `H` is high, the equation sighs, lowers the score a little, and then raises it again somewhere else out of spite.
-- If every term is high at once, the sigmoid saturates near `1000`, which is the mathematically rigorous symbol for “please turn that off.”
-
-### Actual Implementation
-
-The analyzer now really computes a joke version of this score when you pass `--joke`:
-
-```bash
-cargo run -- analyze out/ugly.wav --joke
-cargo run -- analyze out/ugly.wav --model psycho --joke --json
-```
-
-What it actually does in code:
-
-- maps the real analysis metrics onto the joke variables: for example `C` comes from clip pressure, `R` from roughness, `S` from sharpness, `D` from dissonance, `T` from transient density, and `H` from harmonicity
-- derives the more theatrical variables like alias spray, zipper noise, modulation glare, and cadence collapse from combinations of the real psycho/basic metrics
-- computes an `academic_cluster_norm` from the exact “practical interpretation” group: `C`, `R`, `S`, `D`, `A`, `Z`, and `Q`
-- computes an `all_high_bonus_norm` so that when everything is bad at once, the score really does sprint toward `1000`
-- subtracts a little harmonicity relief and then adds back a bit of harmonicity-times-cluster spite, because the README explicitly demanded that harmonicity help only reluctantly
-
-The output includes a real `joke.uglierbasis_index`, a verdict such as `academically ugly` or `please turn that off`, and a structured breakdown in JSON mode.
-
-## Roadmap
-
-`usg` already covers ugly synthesis, analysis, transformation, corpus generation, benchmarking, and chip-speech rendering. The next steps are about making those systems deeper, more reproducible, and more historically specific.
-
-### Release Track
-
-```mermaid
-flowchart LR
-  v04["v0.4<br/>speech depth"] --> v05["v0.5<br/>analysis + corpus tooling"]
-  v05 --> v06["v0.6<br/>smarter go + chain transforms"]
-
-  v04 --> a["normalization"]
-  v04 --> b["phoneme parsing"]
-  v04 --> c["chip backends"]
-  v04 --> d["timeline + analysis export"]
-
-  v05 --> e["batch analysis"]
-  v05 --> f["timelines + spectrograms"]
-  v05 --> g["comparison reports"]
-
-  v06 --> h["multiband uglification"]
-  v06 --> i["adaptive effect ordering"]
-  v06 --> j["recipe export"]
-```
-
-### Near-term milestones
-
-- `v0.4`: Speech-focused release now in progress. Text normalization, phoneme parsing, chip-specific backends, expanded oscillator banks, intelligibility-aware speech-pack ranking, and phoneme/analysis JSON export are now part of the baseline; the next step inside `v0.4` is pushing further into allophone timing and chip-specific inventories.
-- `v0.5`: Expand analysis into a stronger research and corpus tool. Add batch corpus analysis, comparison reports, per-frame ugliness timelines, spectrogram export, richer JSON breakdowns, and clearer “why this scored ugly” reporting.
-- `v0.6`: Deepen `go` and `chain` so they behave more like smart transformation systems. Focus on multiband uglification, adaptive effect ordering, stronger target-seeking, preset families, and reusable recipe export.
-
-### Major themes
-
-- Speech IC emulation:
-  Prioritize named chip personalities such as `votrax-sc01`, `sp0256`, `tms5220`, `mea8000`, `s14001a`, and `c64-sam`, plus historically-inspired variants that are wrong in interesting ways.
-- Text-driven speech workflows:
-  Support letter, word, sentence, and paragraph input more deeply, with controllable phrasing, breath groups, speaking rate drift, punctuation handling, and intentionally broken articulation modes.
-- Analysis and explainability:
-  Keep building out the psychoacoustic side with stronger roughness/sharpness models, temporal plots, comparison tools, salience maps, and better linkage between metric components and the final ugliness score.
-- Corpus and benchmarking:
-  Ship larger reproducible example packs, benchmark suites, profile comparison tools, and manifests so users can regenerate and compare ugly outputs across versions and backends.
-- Interoperability:
-  Add richer exports such as manifests, recipe files, timeline data, and library-friendly APIs so `usg` can act as both a CLI tool and a component inside other audio workflows.
-- UX:
-  Improve `--help`, preset discovery, progress reporting, recipe recall, and “show me how this file was made” features so the tool stays playful without becoming opaque.
-
-### Recommended next focus
-
-If only one track gets concentrated effort next, it should be speech. The highest-payoff sequence is:
-
-1. Text normalization and phoneme parsing.
-2. Chip-specific speech backends and allophone inventories.
-3. More oscillators, excitation sources, and noise/consonant models.
-4. Better sentence and paragraph timing control.
-5. Stronger `speech-pack` ranking for intelligibility versus ugliness.
-6. Export of phoneme timelines, analysis JSON, and reproducible speech recipes.
-
-## Appendix B
-
-### B.1 Scope Of This Reading List
-
-This project sits at the intersection of psychoacoustics, auditory preference, musical dissonance, and philosophical aesthetics. Direct literature using the exact phrase `auditory ugliness` is relatively sparse; where that phrase is absent, the references below are included because they bear directly on the perceptual ingredients most often associated with sonic ugliness in practice: roughness, beating, critical-band interactions, sharpness, aversive timbre, sensory dissonance, musical instability, and explicitly theorized ugliness in music.
-
-### B.2 Foundational Literature (Psychoacoustics And Sensory Dissonance)
-
-This section now deliberately mixes two adjacent literatures: first, the psychoacoustic work that explains why some sounds are perceived as rough, unstable, shrill, beating, or aversive; second, the smaller but more direct literature that explicitly talks about ugliness, ugly sound, harsh noise, and ugliness in music. The first group is the stronger empirical foundation. The second group is the more explicit vocabulary layer.
-
-Core psychoacoustics and sensory dissonance:
-
-- Helmholtz, H. (1863/1954). *On the Sensations of Tone*. The long historical starting point for modern discussions of beating, consonance, dissonance, and the physiological basis of musical tone relations. [Google Books](https://books.google.com/books/about/On_the_Sensations_of_Tone.html?id=VM5gNckZj5YC)
-- Plomp, R., & Levelt, W. J. M. (1965). *Tonal consonance and critical bandwidth*. Journal of the Acoustical Society of America, 38(4), 548-560. This is still one of the central empirical anchors for critical-band accounts of sensory dissonance. [PubMed](https://pubmed.ncbi.nlm.nih.gov/5831012/) | [MPI summary](https://www.mpi.nl/publications/item66382/tonal-consonance-and-critical-bandwidth)
-- Kameoka, A., & Kuriyagawa, M. (1969). *Consonance theory part I: consonance of dyads*. Journal of the Acoustical Society of America, 45(6), 1451-1459. A classic attempt to formalize sensory consonance for two-tone combinations. [PubMed](https://pubmed.ncbi.nlm.nih.gov/5803168/)
-- Kameoka, A., & Kuriyagawa, M. (1969). *Consonance theory part II: consonance of complex tones and its calculation method*. Journal of the Acoustical Society of America, 45(6), 1460-1469. Extends the dyad model toward complex-tone dissonance calculation. [PubMed](https://pubmed.ncbi.nlm.nih.gov/5803169/)
-- Terhardt, E. (1974). *Pitch, consonance, and harmony*. Journal of the Acoustical Society of America, 55(5), 1061-1069. Important for pitch-based and harmonic-template perspectives on consonance. [PubMed](https://pubmed.ncbi.nlm.nih.gov/4833699/)
-- Parncutt, R. (1989). *Harmony: A Psychoacoustical Approach*. A major book-length account linking harmony, roughness, and psychoacoustic constraint. [Springer](https://link.springer.com/book/10.1007/978-3-642-74831-8)
-- Zwicker, E., & Fastl, H. (2007 ed.). *Psychoacoustics: Facts and Models*. Still one of the standard references for loudness, roughness, sharpness, fluctuation strength, and practical psychoacoustic modeling. [Springer](https://link.springer.com/book/10.1007/978-3-540-68888-4)
-- Sethares, W. A. (1993). *Local Consonance and the Relationship Between Timbre and Scale*. Foundational for timbre-sensitive dissonance curves and for moving beyond “good interval / bad interval” models that ignore spectrum. [Author page](https://sethares.engr.wisc.edu/papers/consance.html)
-
-Reviews, syntheses, and modern empirical follow-ups:
-
-- Harrison, P. M. C., & Pearce, M. T. (2020). *Simultaneous Consonance in Music Perception and Composition*. Psychological Review, 127(2), 216-244. A large review/comparison of computational consonance models and explanatory families. [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC7032667/)
-- Di Stefano, N., & Spence, C. (2022). *Roughness perception: A multisensory/crossmodal perspective*. Especially useful here because it explicitly treats auditory roughness as relevant both to dissonance and to aversive vocal timbres such as screams. [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC9481510/)
-- Eerola, T., & Lahdelma, I. (2022). *Register impacts perceptual consonance through roughness and sharpness*. Helpful for any ugliness model that treats low-end mud and top-end shrillness as distinct but interacting penalties. [PubMed](https://pubmed.ncbi.nlm.nih.gov/34921342/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC9166839/)
-- Popescu, T., Neuser, M. P., Neuwirth, M., Bravo, F., Mende, W., Boneh, O., Moss, F. C., & Rohrmeier, M. (2019). *The pleasantness of sensory dissonance is mediated by musical style and expertise*. A useful reminder that dissonance is not simply “bad”; style, training, and enculturation modulate how roughness and instability are valued. [PubMed](https://pubmed.ncbi.nlm.nih.gov/30705379/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC6355932/)
-- Milne, A. J., Smit, E. A., Sarvasy, H. S., & Dean, R. T. (2023). *Evidence for a universal association of auditory roughness with musical stability*. Useful empirical support for roughness as a cross-cultural predictor of unstable / unfinished musical affect. [PubMed](https://pubmed.ncbi.nlm.nih.gov/37729156/)
-- Marjieh, R., Harrison, P. M. C., Lee, H., Deligiannaki, F., et al. (2024). *Timbral effects on consonance disentangle psychoacoustic mechanisms and suggest perceptual origins for musical scales*. Important newer evidence that timbre is not a side issue but part of the consonance mechanism itself. [Nature Communications](https://www.nature.com/articles/s41467-024-45812-z)
-- Fishman, Y. I., Volkov, I. O., Noh, M. D., Garell, P. C., Arezzo, J. C., Howard, M. A., & Steinschneider, M. (2001). *Consonance and dissonance of musical chords: neural correlates in auditory cortex of monkeys and humans*. Useful if Appendix B wants a neurophysiological bridge from acoustic roughness to cortical response. [PubMed](https://pubmed.ncbi.nlm.nih.gov/11731536/)
-- Trulla, L. L., Di Stefano, N., & Giuliani, A. (2018). *Computational Approach to Musical Consonance and Dissonance*. A modern computational framing of consonance/dissonance with explicit methodological discussion. [Frontiers](https://www.frontiersin.org/articles/10.3389/fpsyg.2018.00381/full) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC5893895/)
-- Bowling, D. L. (2021). *Harmonicity and Roughness in the Biology of Tonal Aesthetics*. Useful for the ongoing harmonicity-versus-roughness debate rather than treating “ugliness” as reducible to one scalar measure. [PubMed](https://pubmed.ncbi.nlm.nih.gov/34566250/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8460127/)
-- Hoffman, M., & Cook, P. (2008). *Real-Time Dissonancizers: Two Dissonance-Augmenting Audio Effects*. Directly relevant to this repo's `dissonance-ring` and `dissonance-expand` DSP because it turns sensory-dissonance theory into concrete audio processing. [Princeton PDF](https://soundlab.cs.princeton.edu/publications/diss_dafx2008.pdf) | [SciSpace mirror](https://scispace.com/pdf/real-time-dissonancizers-two-dissonance-augmenting-audio-2c9dtmn1k0.pdf)
-- Leider, C. (2007). *Dissonance Theory of Sound Objects*. PhD dissertation, Princeton University. Included here in the main B.2 list because it extends dissonance thinking from interval/chord judgments toward sound objects and process-oriented sonic organization, which is especially relevant to this project. [Referenced in DAFx-08 bibliography](https://soundlab.cs.princeton.edu/publications/diss_dafx2008.pdf) | [University of Miami note on degree/dissertation](https://news.miami.edu/frost/_assets/pdf/the-score/2007SCORE.pdf)
-
-Roughness, aversion, harsh timbre, and unpleasant sound:
-
-- Pressnitzer, D., & McAdams, S. (1999). *Two phase effects in roughness perception*. Important if the appendix wants something more mechanistic than broad roughness summaries; it shows that perceived roughness depends on temporal structure, not just gross spectrum. [PubMed](https://pubmed.ncbi.nlm.nih.gov/10335629/)
-- Pressnitzer, D., McAdams, S., Winsberg, S., & Fineberg, J. (2000). *Perception of musical tension for nontonal orchestral timbres and its relation to psychoacoustic roughness*. Especially relevant if “ugliness” is being connected to modernist or non-tonal tension rather than only interval roughness in isolated dyads. [PubMed](https://pubmed.ncbi.nlm.nih.gov/10703256/)
-- De Baene, W., Vandierendonck, A., Leman, M., Widmann, A., & Tervaniemi, M. (2004). *Roughness perception in sounds: behavioral and ERP evidence*. Useful for linking perceived roughness to electrophysiological response. [PubMed](https://pubmed.ncbi.nlm.nih.gov/15294389/)
-- Arnal, L. H., Flinker, A., Kleinschmidt, A., Giraud, A.-L., & Poeppel, D. (2015). *Human screams occupy a privileged niche in the communication soundscape*. Important because it ties roughness directly to alarm, fear, salience, and biologically potent unpleasantness. [PubMed](https://pubmed.ncbi.nlm.nih.gov/26190070/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC4562283/)
-- Eddins, D. A., Kopf, L. M., & Shrivastav, R. (2015). *The psychophysics of roughness applied to dysphonic voice*. Useful if the repo’s “ugly” sound design wants a speech/voice-quality bridge rather than only a music-theory bridge. [PubMed](https://pubmed.ncbi.nlm.nih.gov/26723336/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC4691258/)
-- Taffou, M., Suied, C., & Viaud-Delmon, I. (2021). *Auditory roughness elicits defense reactions*. Direct evidence that rough sounds do not just sound “bad” but also alter defensive spatial behavior. [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC7806762/)
-- Ringer, H., Rösch, S. A., Roeber, U., Deller, J., Escera, C., & Grimm, S. (2024). *That sounds awful! Does sound unpleasantness modulate the mismatch negativity and its habituation?* Useful for the broader “awful sound” literature beyond specifically musical dissonance. [PubMed](https://pubmed.ncbi.nlm.nih.gov/37779371/)
-
-Auditory preference, aversion, and sound quality:
-
-- McDermott, J. H. (2012). *Auditory Preferences and Aesthetics: Music, Voices, and Everyday Sounds*. This is especially relevant if “auditory ugliness” is being treated as a broader family of aversive listening responses, not just musical dissonance. [ScienceDirect chapter page](https://www.sciencedirect.com/science/article/abs/pii/B9780123814319000206) | [MIT abstract/reprint page](https://mcdermottlab.mit.edu/bib2php/pubs/makeAbs.php?loc=mcdermott11a)
-- Alluri, V., Toiviainen, P., Jääskeläinen, I. P., Glerean, E., Sams, M., & Brattico, E. (2017). *Global Sensory Qualities and Aesthetic Experience in Music*. Relevant as a bridge from low-level auditory descriptors to high-level aesthetic judgment. [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC5380758/)
-- Heller, L. M., & Smith, J. M. (2022). *Identification of Everyday Sounds Affects Their Pleasantness*. Helpful if this reading list wants to acknowledge that perceived ugliness is not only in the waveform; source recognition changes pleasantness too. [PubMed](https://pubmed.ncbi.nlm.nih.gov/35936236/) | [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC9347306/)
-
-Ugliness, aesthetic negativity, and ugliness in music:
-
-- Henderson, G. E. (2015). *Ugliness: A Cultural History*. Broad rather than psychoacoustic, but useful because it explicitly situates ugliness across media, including music and the senses. [Google Books](https://books.google.com/books/about/Ugliness.html?id=FpG-CwAAQBAJ) | [Smithsonian catalog](https://www.si.edu/object/siris_sil_1058572)
-- Rosenkranz, K. (1853/2015 critical edition). *Aesthetics of Ugliness*. Historically indispensable as a general ugliness framework, even though it is not specifically auditory. [Bloomsbury](https://www.bloomsbury.com/us/aesthetics-of-ugliness-9781350022928/) | [PhilPapers](https://philpapers.org/rec/ROSAOU-2)
-- Henderson, G. P. (1966). *The Concept of Ugliness*. A classic philosophical treatment of ugliness as an aesthetic category. [Oxford Academic](https://academic.oup.com/bjaesthetics/article/6/3/219/48167)
-- Pickford, R. W. (1969). *The Psychology of Ugliness*. Useful if this appendix wants historical precedent for treating ugliness as a perceptual-psychological problem rather than only a moral or stylistic one. [Oxford Academic](https://academic.oup.com/bjaesthetics/article/9/3/258/11416)
-- Carmichael, P. A. (1972). *The Sense of Ugliness*. Another compact philosophical reference worth citing when arguing that ugliness is its own mode of aesthetic experience rather than merely “failed beauty.” [Oxford Academic](https://academic.oup.com/jaac/article/30/4/495/6337054)
-- Gracyk, T. A. (1986). *Sublimity, Ugliness, and Formlessness in Kant's Aesthetic Theory*. Helpful if the repo wants to place ugly sound somewhere between formal breakdown and the sublime. [Oxford Academic](https://academic.oup.com/jaac/article/45/1/49/6339900)
-- Thomson, G. (1992). *Kant's Problems With Ugliness*. Useful for the negative-aesthetics background that later music-ugliness arguments often inherit. [Oxford Academic](https://academic.oup.com/jaac/article/50/2/107/6341386)
-- McConnell, S. (2008). *How Kant Might Explain Ugliness*. Helpful for negative aesthetic judgment as a positive category rather than merely “failed beauty.” [Oxford Academic](https://academic.oup.com/bjaesthetics/article/48/2/205/24266)
-- Cohen, A. (2013). *Kant on the Possibility of Ugliness*. Relevant if the theoretical frame distinguishes aesthetic negativity from mere displeasure. [Oxford Academic](https://academic.oup.com/bjaesthetics/article/53/2/199/28454)
-- Coate, M. (2018). *Nothing but Nonsense: A Kantian Account of Ugliness*. A contemporary contribution to ugliness as a distinct judgment category. [Oxford Academic](https://academic.oup.com/bjaesthetics/article-abstract/58/1/51/4670995)
-- Paris, P. (2017). *The Deformity-Related Conception of Ugliness*. Not musical, but useful for thinking through deformation, disfiguration, and negative form as aesthetic concepts. [Oxford Academic PDF page](https://academic.oup.com/bjaesthetics/article-pdf/57/2/139/19298202/ayw090.pdf)
-- Park, Byung-Kyu. (2019). *A Study of Auditory Ugliness in David Lynch's Films*. One of the most directly on-topic references because it explicitly uses the phrase `auditory ugliness` and analyzes sound design through the aesthetics of ugliness. [Earticle](https://www.earticle.net/Article/A356695)
-- Garratt, J. (2020). *Beyond Beauty: The Aesthetics of Ugliness in German Musical and Artistic Debates of the Mid-19th Century*. Directly relevant to the history of ugliness in musical discourse rather than ugliness in the abstract. [University of Manchester Research Explorer](https://research.manchester.ac.uk/en/publications/beyond-beauty-the-aesthetics-of-ugliness-in-german-musical-and-ar/)
-- Fan, J. (2024). *The Embodiment of Ugliness in 20th Century Western Music: A Case Study of Schoenberg's "Prelude"*. Useful as a recent music-specific attempt to treat ugliness as compositional and historical method. [Article page](https://www.ewadirect.com/journal/ahr/article/view/12535)
-- Radovanovic Suput, B. (2025). *Aesthetics of Ugliness – Sound and Image of Extreme Metal Music*. This is one of the most directly relevant music-specific ugliness items I found; it explicitly addresses ugliness as a sonic and visual category in extreme metal. [Article page](https://hrcak.srce.hr/en/clanak/491657)
-- Guesde, C., & Nadrigny, P. (2018). *The Most Beautiful Ugly Sound in the World: À l'écoute de la noise*. Particularly relevant for harsh-noise aesthetics, ugly sound as a positive listening practice, and the education of ears toward discomfort. [Publisher page](https://www.editions-mf.com/produit/61/9782378040352/the-most-beautiful-ugly-sound-in-the-world)
-- McNeilly, K. (1995). *Ugly Beauty: John Zorn and the Politics of Postmodern Music*. Included because it addresses “ugly” as an affirmative musical-aesthetic category rather than merely a failure mode. [Postmodern Culture](https://www.pomoculture.org/2013/09/24/ugly-beauty-john-zorn-and-the-politics-of-postmodern-music/)
-- Orestig, J. (2019). *“Sluta spela fin och gå loss”: Original Dunder Zubbis som lallande polyfoni*. Included here as a music ugliness reference in the broader sociocultural/aesthetic sense, rather than as a psychoacoustic study. [Article page](https://publicera.kb.se/tfl/article/view/7285)
-- Unger, M. P. (2016). *Sound, Symbol, Sociality: The Aesthetic Experience of Extreme Metal Music*. Not a direct “ugliness” title, but highly adjacent for sound, defilement, harshness, and the aesthetics of extreme musical experience. [Springer](https://link.springer.com/book/10.1057/978-1-137-47835-1)
-
-Working synthesis for this repo:
-
-- The strongest psychoacoustic basis for “ugliness” remains roughness / beating / critical-band interaction, especially in the Plomp-Levelt, Kameoka-Kuriyagawa, Terhardt, Parncutt, Zwicker-Fastl, Sethares, Harrison-Pearce, Eerola-Lahdelma, and Popescu et al. line of work.
-- The stronger claim that there is a fully established, standalone empirical literature specifically named `auditory ugliness` would be an overstatement.
-- The broader ugliness-in-music claim is therefore an inference built by combining sensory-dissonance research, auditory preference/aversion literature, and philosophical / musicological ugliness literature.
-
-## Why Rust
-
-This project is implemented entirely in Rust, including CLI parsing, synthesis, WAV I/O, and analysis.
+## Reading Order
+
+1. [docs/COMMANDS.md](docs/COMMANDS.md)
+2. [docs/METRICS.md](docs/METRICS.md)
+3. [docs/PSYCHOACOUSTICS.md](docs/PSYCHOACOUSTICS.md)
+4. [README_EXAMPLES.md](README_EXAMPLES.md)
