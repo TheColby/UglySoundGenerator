@@ -1302,6 +1302,18 @@ pub fn render_piece_to_wav_with_engine(
     opts: &PieceOptions,
     engine: &RenderEngine,
 ) -> Result<PieceSummary> {
+    render_piece_to_wav_with_engine_progress(output, opts, engine, |_done, _total, _style| {})
+}
+
+pub fn render_piece_to_wav_with_engine_progress<F>(
+    output: &Path,
+    opts: &PieceOptions,
+    engine: &RenderEngine,
+    mut progress: F,
+) -> Result<PieceSummary>
+where
+    F: FnMut(usize, usize, Style),
+{
     validate_piece_options(opts)?;
     let plan = resolve_backend_plan(engine)?;
     let seed = opts.seed.unwrap_or_else(seed_from_time);
@@ -1317,8 +1329,10 @@ pub fn render_piece_to_wav_with_engine(
     let mut channels = vec![vec![0.0_f64; frames_usize]; channel_count];
     let (speaker_pos, lfe_idx) = speaker_positions(layout);
 
-    for _ in 0..event_count {
-        let style = opts.styles[rng.gen_range(0..opts.styles.len())];
+    let mut last_style = None;
+    for event_idx in 0..event_count {
+        let style = pick_piece_style(&opts.styles, last_style, &mut rng);
+        last_style = Some(style);
         let event_duration_s = rng.gen_range(opts.min_event_duration..=opts.max_event_duration);
         let event_frames = usize::try_from(duration_to_frames(event_duration_s, opts.sample_rate)?)
             .map_err(|_| anyhow!("piece event is too large for this platform"))?
@@ -1340,6 +1354,37 @@ pub fn render_piece_to_wav_with_engine(
             event_seed,
             &plan,
         )?;
+        if rng.gen_bool(0.72) && opts.styles.len() > 1 {
+            let alt_style = pick_piece_style(&opts.styles, Some(style), &mut rng);
+            let alt_seed = rng.r#gen::<u64>();
+            let alt_gain = (event_gain * rng.gen_range(0.25_f64..0.7_f64)).clamp(0.0, 1.0);
+            let alt = render_samples_with_plan(
+                event_frames,
+                opts.sample_rate as f64,
+                alt_style,
+                alt_gain,
+                alt_seed,
+                &plan,
+            )?;
+            mix_piece_layer(&mut event, &alt, rng.gen_range(0.22_f64..0.58_f64));
+        }
+        if rng.gen_bool(0.26) && opts.styles.len() > 2 {
+            let third_style = pick_piece_style(&opts.styles, Some(style), &mut rng);
+            let third = render_samples_with_plan(
+                event_frames,
+                opts.sample_rate as f64,
+                third_style,
+                (event_gain * rng.gen_range(0.15_f64..0.45_f64)).clamp(0.0, 1.0),
+                rng.r#gen::<u64>(),
+                &plan,
+            )?;
+            mix_piece_layer(&mut event, &third, rng.gen_range(0.14_f64..0.35_f64));
+        }
+        diversify_piece_event(
+            &mut event,
+            opts.sample_rate as f64,
+            event_seed ^ start as u64 ^ event_idx as u64,
+        );
         apply_event_envelope(&mut event, opts.sample_rate);
 
         let source = random_piece_source_position(layout, &mut rng);
@@ -1357,6 +1402,8 @@ pub fn render_piece_to_wav_with_engine(
                 channel[start + frame_idx] += sample * weight;
             }
         }
+
+        progress(event_idx + 1, event_count, style);
     }
 
     if opts.normalize {
@@ -1779,6 +1826,125 @@ fn apply_event_envelope(samples: &mut [f64], sample_rate: u32) {
         samples[i] *= w;
         let tail_idx = samples.len() - 1 - i;
         samples[tail_idx] *= w;
+    }
+}
+
+fn pick_piece_style(styles: &[Style], previous: Option<Style>, rng: &mut ChaCha8Rng) -> Style {
+    if styles.len() <= 1 {
+        return styles[0];
+    }
+    for _ in 0..8 {
+        let style = styles[rng.gen_range(0..styles.len())];
+        if Some(style) != previous || rng.gen_bool(0.18) {
+            return style;
+        }
+    }
+    styles[rng.gen_range(0..styles.len())]
+}
+
+fn mix_piece_layer(base: &mut [f64], layer: &[f64], mix: f64) {
+    let wet = mix.clamp(0.0, 1.0);
+    let dry = (1.0 - 0.45 * wet).clamp(0.35, 1.0);
+    for (dst, src) in base.iter_mut().zip(layer.iter()) {
+        *dst = soft_clip(*dst * dry + *src * wet);
+    }
+}
+
+fn diversify_piece_event(event: &mut [f64], sample_rate: f64, seed: u64) {
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let fx_count = if rng.gen_bool(0.22) {
+        3
+    } else if rng.gen_bool(0.58) {
+        2
+    } else {
+        1
+    };
+    for fx_idx in 0..fx_count {
+        let effect = pick_piece_effect(&mut rng);
+        apply_effect(
+            event,
+            effect,
+            sample_rate,
+            derive_seed(seed, 0xEFFE_0000 + fx_idx as u64),
+            0,
+        );
+    }
+
+    if rng.gen_bool(0.46) {
+        piece_slice_scramble(event, &mut rng);
+    }
+    if rng.gen_bool(0.31) {
+        piece_glitch_gate(event, &mut rng);
+    }
+    if rng.gen_bool(0.19) {
+        event.reverse();
+    }
+    if rng.gen_bool(0.64) {
+        let wobble_hz = rng.gen_range(7.0_f64..48.0_f64);
+        for (i, sample) in event.iter_mut().enumerate() {
+            let t = i as f64 / sample_rate;
+            let wobble = 0.58 + 0.42 * (2.0 * PI * wobble_hz * t).sin().abs();
+            *sample = soft_clip(*sample * wobble);
+        }
+    }
+}
+
+fn pick_piece_effect(rng: &mut ChaCha8Rng) -> Effect {
+    let roll = rng.gen_range(0.0_f64..1.0_f64);
+    if roll < 0.24 {
+        Effect::Stutter
+    } else if roll < 0.42 {
+        Effect::Crush
+    } else if roll < 0.58 {
+        Effect::Gate
+    } else if roll < 0.72 {
+        Effect::Pop
+    } else if roll < 0.84 {
+        Effect::Smear
+    } else if roll < 0.93 {
+        Effect::DissonanceRing
+    } else {
+        Effect::DissonanceExpand
+    }
+}
+
+fn piece_slice_scramble(event: &mut [f64], rng: &mut ChaCha8Rng) {
+    if event.len() < 128 {
+        return;
+    }
+    let slice = rng.gen_range(24..192).min(event.len().max(1));
+    let mut idx = 0usize;
+    while idx + slice * 2 < event.len() {
+        if rng.gen_bool(0.28) {
+            let a = idx;
+            let b = (idx + slice).min(event.len() - slice);
+            for off in 0..slice {
+                event.swap(a + off, b + off);
+            }
+        }
+        idx += slice;
+    }
+}
+
+fn piece_glitch_gate(event: &mut [f64], rng: &mut ChaCha8Rng) {
+    if event.is_empty() {
+        return;
+    }
+    let window = rng.gen_range(8..128).min(event.len().max(1));
+    let mut idx = 0usize;
+    while idx < event.len() {
+        let gate = if rng.gen_bool(0.22) {
+            0.0
+        } else if rng.gen_bool(0.35) {
+            rng.gen_range(-0.35_f64..0.35_f64)
+        } else {
+            1.0
+        };
+        let end = (idx + window).min(event.len());
+        for sample in &mut event[idx..end] {
+            *sample = soft_clip(*sample * gate);
+        }
+        idx += window;
     }
 }
 
