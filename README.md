@@ -72,6 +72,7 @@ If you are new to the project, start with the first two layers and ignore the re
 | Chaining | Route synthesis/effects through multiple stages | [docs/COMMANDS.md](docs/COMMANDS.md) |
 | Analysis | Measure ugliness and psychoacoustic features | [docs/METRICS.md](docs/METRICS.md) |
 | Psychoacoustics | Equations, assumptions, references, joke metric | [docs/PSYCHOACOUSTICS.md](docs/PSYCHOACOUSTICS.md) |
+| Roadmap | Planned milestones and direction of travel | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Example corpus | 333 reproducible WAV examples | [README_EXAMPLES.md](README_EXAMPLES.md) |
 
 ## Core Examples
@@ -154,4 +155,5 @@ flowchart LR
 1. [docs/COMMANDS.md](docs/COMMANDS.md)
 2. [docs/METRICS.md](docs/METRICS.md)
 3. [docs/PSYCHOACOUSTICS.md](docs/PSYCHOACOUSTICS.md)
-4. [README_EXAMPLES.md](README_EXAMPLES.md)
+4. [docs/ROADMAP.md](docs/ROADMAP.md)
+5. [README_EXAMPLES.md](README_EXAMPLES.md)
