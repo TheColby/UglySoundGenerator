@@ -236,6 +236,45 @@ fn piece_generates_requested_channel_count() {
 }
 
 #[test]
+fn piece_supports_atmos_layouts() {
+    let dir = temp_dir("piece_atmos");
+    let wav = dir.join("piece_714.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "piece",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.5",
+            "--layout",
+            "7.1.4",
+            "--events-per-second",
+            "7",
+            "--min-event-duration",
+            "0.02",
+            "--max-event-duration",
+            "0.05",
+            "--seed",
+            "99",
+        ])
+        .output()
+        .expect("piece atmos command");
+    assert!(
+        render.status.success(),
+        "piece atmos failed: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&render.stdout);
+    assert!(stdout.contains("layout=7.1.4"), "stdout was:\n{stdout}");
+
+    let reader = WavReader::open(&wav).expect("wav reader");
+    let spec = reader.spec();
+    assert_eq!(spec.channels, 12);
+}
+
+#[test]
 fn benchmark_can_export_json_and_csv() {
     let dir = temp_dir("bench_export");
     let json_path = dir.join("bench.json");

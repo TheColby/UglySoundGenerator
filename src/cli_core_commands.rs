@@ -43,6 +43,11 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
     let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let base_seed = apply_seed_controls(args.seed, randomness);
+    let layout = args
+        .layout
+        .as_deref()
+        .map(parse_surround_layout)
+        .transpose()?;
     let engine = engine_from_args(
         args.backend,
         args.jobs,
@@ -56,7 +61,8 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         sample_rate: args.sample_rate,
         seed: Some(base_seed),
         styles,
-        channels: args.channels,
+        layout,
+        channels: layout.map(|l| l.channels()).unwrap_or(args.channels),
         gain: randomize_gain(
             args.gain,
             randomness,
@@ -118,11 +124,12 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         .with_context(|| format!("failed to write {}", args.output.display()))?;
 
     println!(
-        "Rendered piece {} ({} frames @ {} Hz, channels={}, events={}, seed={}, format={}, backend={} -> {}, jobs={})",
+        "Rendered piece {} ({} frames @ {} Hz, channels={}, layout={}, events={}, seed={}, format={}, backend={} -> {}, jobs={})",
         summary.output.display(),
         summary.frames,
         summary.sample_rate,
         summary.channels,
+        summary.layout.as_deref().unwrap_or("custom"),
         summary.events,
         summary.seed,
         summary.output_encoding,

@@ -451,7 +451,12 @@ pub enum SurroundLayout {
     Stereo,
     Quad,
     FiveOne,
+    FiveOneTwo,
+    FiveOneFour,
     SevenOne,
+    SevenOneTwo,
+    SevenOneFour,
+    NineOneSix,
     Custom(u16),
 }
 
@@ -462,7 +467,12 @@ impl SurroundLayout {
             SurroundLayout::Stereo => "stereo".to_string(),
             SurroundLayout::Quad => "quad".to_string(),
             SurroundLayout::FiveOne => "5.1".to_string(),
+            SurroundLayout::FiveOneTwo => "5.1.2".to_string(),
+            SurroundLayout::FiveOneFour => "5.1.4".to_string(),
             SurroundLayout::SevenOne => "7.1".to_string(),
+            SurroundLayout::SevenOneTwo => "7.1.2".to_string(),
+            SurroundLayout::SevenOneFour => "7.1.4".to_string(),
+            SurroundLayout::NineOneSix => "9.1.6".to_string(),
             SurroundLayout::Custom(n) => format!("custom:{n}"),
         }
     }
@@ -473,7 +483,12 @@ impl SurroundLayout {
             SurroundLayout::Stereo => 2,
             SurroundLayout::Quad => 4,
             SurroundLayout::FiveOne => 6,
+            SurroundLayout::FiveOneTwo => 8,
+            SurroundLayout::FiveOneFour => 10,
             SurroundLayout::SevenOne => 8,
+            SurroundLayout::SevenOneTwo => 10,
+            SurroundLayout::SevenOneFour => 12,
+            SurroundLayout::NineOneSix => 16,
             SurroundLayout::Custom(n) => n.max(1),
         }
     }
@@ -680,6 +695,7 @@ pub struct PieceOptions {
     pub sample_rate: u32,
     pub seed: Option<u64>,
     pub styles: Vec<Style>,
+    pub layout: Option<SurroundLayout>,
     pub channels: u16,
     pub gain: f64,
     pub normalize: bool,
@@ -699,6 +715,7 @@ impl Default for PieceOptions {
             sample_rate: 192_000,
             seed: None,
             styles: available_styles().to_vec(),
+            layout: Some(SurroundLayout::Stereo),
             channels: 2,
             gain: 0.7,
             normalize: true,
@@ -837,6 +854,7 @@ pub struct PieceSummary {
     pub frames: usize,
     pub sample_rate: u32,
     pub channels: u16,
+    pub layout: Option<String>,
     pub events: usize,
     pub seed: u64,
     pub output_encoding: OutputEncoding,
@@ -1287,13 +1305,17 @@ pub fn render_piece_to_wav_with_engine(
     validate_piece_options(opts)?;
     let plan = resolve_backend_plan(engine)?;
     let seed = opts.seed.unwrap_or_else(seed_from_time);
+    let layout = opts
+        .layout
+        .unwrap_or_else(|| SurroundLayout::Custom(opts.channels));
     let total_frames = duration_to_frames(opts.duration, opts.sample_rate)?;
     let frames_usize = usize::try_from(total_frames)
         .map_err(|_| anyhow!("requested piece render is too large for this platform"))?;
-    let channel_count = usize::from(opts.channels);
+    let channel_count = usize::from(layout.channels());
     let event_count = (opts.duration * opts.events_per_second).round().max(1.0) as usize;
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let mut channels = vec![vec![0.0_f64; frames_usize]; channel_count];
+    let (speaker_pos, lfe_idx) = speaker_positions(layout);
 
     for _ in 0..event_count {
         let style = opts.styles[rng.gen_range(0..opts.styles.len())];
@@ -1320,13 +1342,11 @@ pub fn render_piece_to_wav_with_engine(
         )?;
         apply_event_envelope(&mut event, opts.sample_rate);
 
-        let center = if channel_count <= 1 {
-            0.0
-        } else {
-            rng.gen_range(0.0..(channel_count - 1) as f64)
-        };
-        let width = rng.gen_range(opts.min_pan_width..=opts.max_pan_width);
-        let weights = piece_pan_weights(channel_count, center, width);
+        let source = random_piece_source_position(layout, &mut rng);
+        let width = rng
+            .gen_range(opts.min_pan_width..=opts.max_pan_width)
+            .max(0.05);
+        let weights = piece_spatial_weights(&speaker_pos, lfe_idx, source, width);
 
         for (ch_idx, channel) in channels.iter_mut().enumerate() {
             let weight = weights[ch_idx];
@@ -1348,7 +1368,8 @@ pub fn render_piece_to_wav_with_engine(
         output: output.to_path_buf(),
         frames: frames_usize,
         sample_rate: opts.sample_rate,
-        channels: opts.channels,
+        channels: layout.channels(),
+        layout: Some(layout.as_str()),
         events: event_count,
         seed,
         output_encoding: opts.output_encoding,
@@ -1761,23 +1782,58 @@ fn apply_event_envelope(samples: &mut [f64], sample_rate: u32) {
     }
 }
 
-fn piece_pan_weights(channels: usize, center: f64, width: f64) -> Vec<f64> {
+fn piece_spatial_weights(
+    speaker_pos: &[[f64; 3]],
+    lfe_idx: Option<usize>,
+    source: [f64; 3],
+    width: f64,
+) -> Vec<f64> {
     let sigma = width.max(0.05);
-    let mut weights = Vec::with_capacity(channels);
+    let mut weights = Vec::with_capacity(speaker_pos.len());
     let mut sum = 0.0_f64;
-    for idx in 0..channels {
-        let dist = (idx as f64 - center) / sigma;
+    for (idx, spk) in speaker_pos.iter().enumerate() {
+        if Some(idx) == lfe_idx {
+            weights.push(0.0);
+            continue;
+        }
+        let dist = distance3(source, *spk) / sigma;
         let w = (-0.5 * dist * dist).exp();
         weights.push(w);
         sum += w;
     }
     if sum <= EPS64 {
-        return vec![1.0 / channels.max(1) as f64; channels];
+        return vec![1.0 / speaker_pos.len().max(1) as f64; speaker_pos.len()];
     }
     for weight in &mut weights {
         *weight /= sum;
     }
+    if let Some(lfe) = lfe_idx {
+        let height_energy = source[2].max(0.0);
+        let lfe_weight = (0.06 + 0.14 * height_energy).clamp(0.0, 0.18);
+        let keep = (1.0 - lfe_weight).clamp(0.0, 1.0);
+        for (idx, weight) in weights.iter_mut().enumerate() {
+            if idx == lfe {
+                continue;
+            }
+            *weight *= keep;
+        }
+        weights[lfe] = lfe_weight;
+    }
     weights
+}
+
+fn random_piece_source_position(layout: SurroundLayout, rng: &mut ChaCha8Rng) -> [f64; 3] {
+    let az = rng.gen_range(-180.0_f64..180.0_f64).to_radians();
+    let radius = rng.gen_range(0.45_f64..1.35_f64);
+    let z = match layout {
+        SurroundLayout::FiveOneTwo
+        | SurroundLayout::FiveOneFour
+        | SurroundLayout::SevenOneTwo
+        | SurroundLayout::SevenOneFour
+        | SurroundLayout::NineOneSix => rng.gen_range(0.0_f64..1.0_f64),
+        _ => rng.gen_range(-0.1_f64..0.15_f64),
+    };
+    [az.sin() * radius, az.cos() * radius, z]
 }
 
 fn render_to_wav_streaming(
@@ -2620,6 +2676,16 @@ pub fn validate_piece_options(opts: &PieceOptions) -> Result<()> {
     }
     if opts.channels == 0 || opts.channels > 64 {
         return Err(anyhow!("channels must be between 1 and 64"));
+    }
+    if let Some(layout) = opts.layout
+        && opts.channels != layout.channels()
+    {
+        return Err(anyhow!(
+            "channels ({}) must match layout {} ({})",
+            opts.channels,
+            layout,
+            layout.channels()
+        ));
     }
     if opts.styles.is_empty() {
         return Err(anyhow!("piece requires at least one style"));
@@ -6027,6 +6093,34 @@ fn speaker_positions(layout: SurroundLayout) -> (Vec<[f64; 3]>, Option<usize>) {
             ],
             Some(3),
         ),
+        SurroundLayout::FiveOneTwo => (
+            vec![
+                azimuth_deg(-30.0),  // L
+                azimuth_deg(30.0),   // R
+                azimuth_deg(0.0),    // C
+                [0.0, 0.5, 0.0],     // LFE
+                azimuth_deg(-110.0), // Ls
+                azimuth_deg(110.0),  // Rs
+                [-0.45, 0.35, 0.85], // Ltf
+                [0.45, 0.35, 0.85],  // Rtf
+            ],
+            Some(3),
+        ),
+        SurroundLayout::FiveOneFour => (
+            vec![
+                azimuth_deg(-30.0),   // L
+                azimuth_deg(30.0),    // R
+                azimuth_deg(0.0),     // C
+                [0.0, 0.5, 0.0],      // LFE
+                azimuth_deg(-110.0),  // Ls
+                azimuth_deg(110.0),   // Rs
+                [-0.45, 0.35, 0.85],  // Ltf
+                [0.45, 0.35, 0.85],   // Rtf
+                [-0.45, -0.35, 0.85], // Ltr
+                [0.45, -0.35, 0.85],  // Rtr
+            ],
+            Some(3),
+        ),
         SurroundLayout::SevenOne => (
             vec![
                 azimuth_deg(-30.0),  // L
@@ -6037,6 +6131,59 @@ fn speaker_positions(layout: SurroundLayout) -> (Vec<[f64; 3]>, Option<usize>) {
                 azimuth_deg(90.0),   // Rss
                 azimuth_deg(-150.0), // Lrs
                 azimuth_deg(150.0),  // Rrs
+            ],
+            Some(3),
+        ),
+        SurroundLayout::SevenOneTwo => (
+            vec![
+                azimuth_deg(-30.0),  // L
+                azimuth_deg(30.0),   // R
+                azimuth_deg(0.0),    // C
+                [0.0, 0.5, 0.0],     // LFE
+                azimuth_deg(-90.0),  // Lss
+                azimuth_deg(90.0),   // Rss
+                azimuth_deg(-150.0), // Lrs
+                azimuth_deg(150.0),  // Rrs
+                [-0.45, 0.35, 0.85], // Ltf
+                [0.45, 0.35, 0.85],  // Rtf
+            ],
+            Some(3),
+        ),
+        SurroundLayout::SevenOneFour => (
+            vec![
+                azimuth_deg(-30.0),   // L
+                azimuth_deg(30.0),    // R
+                azimuth_deg(0.0),     // C
+                [0.0, 0.5, 0.0],      // LFE
+                azimuth_deg(-90.0),   // Lss
+                azimuth_deg(90.0),    // Rss
+                azimuth_deg(-150.0),  // Lrs
+                azimuth_deg(150.0),   // Rrs
+                [-0.45, 0.35, 0.85],  // Ltf
+                [0.45, 0.35, 0.85],   // Rtf
+                [-0.45, -0.35, 0.85], // Ltr
+                [0.45, -0.35, 0.85],  // Rtr
+            ],
+            Some(3),
+        ),
+        SurroundLayout::NineOneSix => (
+            vec![
+                azimuth_deg(-30.0),   // L
+                azimuth_deg(30.0),    // R
+                azimuth_deg(0.0),     // C
+                [0.0, 0.5, 0.0],      // LFE
+                azimuth_deg(-60.0),   // Lw
+                azimuth_deg(60.0),    // Rw
+                azimuth_deg(-90.0),   // Lss
+                azimuth_deg(90.0),    // Rss
+                azimuth_deg(-150.0),  // Lrs
+                azimuth_deg(150.0),   // Rrs
+                [-0.55, 0.65, 0.85],  // Ltf
+                [0.55, 0.65, 0.85],   // Rtf
+                [0.0, 0.75, 0.9],     // Tm
+                [-0.55, -0.55, 0.85], // Ltr
+                [0.55, -0.55, 0.85],  // Rtr
+                [0.0, -0.75, 0.9],    // Trm
             ],
             Some(3),
         ),

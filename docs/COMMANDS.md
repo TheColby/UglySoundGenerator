@@ -43,12 +43,14 @@ Render a full piece made from many short ugly sounds spread across stereo or arb
 cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
 cargo run -- piece --output out/quad.wav --duration 45 --channels 4 --styles glitch,punish,catastrophic
 cargo run -- piece --output out/octo.wav --duration 60 --channels 8 --min-event-duration 0.02 --max-event-duration 0.18 --seed 42
+cargo run -- piece --output out/atmos.wav --duration 30 --layout 7.1.4 --events-per-second 9
 ```
 
 Key options:
 
 - `--duration <SECONDS>`
 - `--channels <N>`
+- `--layout <mono|stereo|quad|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|9.1.6|custom:N>`
 - `--sample-rate <HZ>`
 - `--styles <STYLE,...>`
 - `--events-per-second <RATE>`
@@ -57,6 +59,8 @@ Key options:
 - `--min-pan-width`, `--max-pan-width`
 - `--seed <U64>`
 - `--backend <auto|cpu|metal|cuda>`
+
+When `--layout` is provided, it sets the channel count automatically and uses named speaker positions, including Atmos-style height layouts.
 
 ### `usg chain`
 

@@ -50,6 +50,12 @@ Render a stereo ugly piece made of many short sounds:
 cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
 ```
 
+Render an Atmos-style piece with height channels:
+
+```bash
+cargo run -- piece --output out/piece_714.wav --duration 30 --layout 7.1.4 --events-per-second 9
+```
+
 ## One Metric, One Meaning
 
 USG uses a single public ugliness unit: **Colbys (Co)**.

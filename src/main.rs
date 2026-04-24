@@ -153,6 +153,10 @@ struct PieceArgs {
     #[arg(long, default_value_t = 2)]
     channels: u16,
 
+    /// Optional named layout. Examples: stereo,quad,5.1,5.1.2,5.1.4,7.1,7.1.2,7.1.4,9.1.6,custom:12
+    #[arg(long)]
+    layout: Option<String>,
+
     /// Sample rate in Hz.
     #[arg(short = 'r', long, default_value_t = 192_000)]
     sample_rate: u32,
@@ -2508,7 +2512,12 @@ fn parse_surround_layout(text: &str) -> Result<SurroundLayout> {
         "stereo" | "2.0" => Ok(SurroundLayout::Stereo),
         "quad" | "4.0" => Ok(SurroundLayout::Quad),
         "5.1" | "fiveone" => Ok(SurroundLayout::FiveOne),
+        "5.1.2" | "fiveonetwo" | "atmos5.1.2" => Ok(SurroundLayout::FiveOneTwo),
+        "5.1.4" | "fiveonefour" | "atmos5.1.4" => Ok(SurroundLayout::FiveOneFour),
         "7.1" | "sevenone" => Ok(SurroundLayout::SevenOne),
+        "7.1.2" | "sevenonetwo" | "atmos7.1.2" => Ok(SurroundLayout::SevenOneTwo),
+        "7.1.4" | "sevenonefour" | "atmos7.1.4" => Ok(SurroundLayout::SevenOneFour),
+        "9.1.6" | "nineonesix" | "atmos9.1.6" => Ok(SurroundLayout::NineOneSix),
         _ => {
             if let Some(rest) = t.strip_prefix("custom:") {
                 let n: u16 = rest
@@ -2517,7 +2526,7 @@ fn parse_surround_layout(text: &str) -> Result<SurroundLayout> {
                 return Ok(SurroundLayout::Custom(n.max(1)));
             }
             Err(anyhow::anyhow!(
-                "unknown upmix layout '{text}' (use mono|stereo|quad|5.1|7.1|custom:N)"
+                "unknown upmix layout '{text}' (use mono|stereo|quad|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|9.1.6|custom:N)"
             ))
         }
     }
