@@ -198,6 +198,44 @@ fn render_supports_int24_output() {
 }
 
 #[test]
+fn piece_generates_requested_channel_count() {
+    let dir = temp_dir("piece");
+    let wav = dir.join("piece.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "piece",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.6",
+            "--channels",
+            "4",
+            "--events-per-second",
+            "8",
+            "--min-event-duration",
+            "0.02",
+            "--max-event-duration",
+            "0.08",
+            "--seed",
+            "42",
+        ])
+        .output()
+        .expect("piece command");
+    assert!(
+        render.status.success(),
+        "piece failed: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let reader = WavReader::open(&wav).expect("wav reader");
+    let spec = reader.spec();
+    assert_eq!(spec.channels, 4);
+    assert_eq!(spec.sample_format, SampleFormat::Float);
+    assert_eq!(spec.bits_per_sample, 32);
+}
+
+#[test]
 fn benchmark_can_export_json_and_csv() {
     let dir = temp_dir("bench_export");
     let json_path = dir.join("bench.json");

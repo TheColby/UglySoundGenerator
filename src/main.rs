@@ -13,20 +13,21 @@ use serde::{Deserialize, Serialize};
 use usg::{
     AnalysisReport, AnalyzeModel, AnalyzeOptions, COLBYS_MAX, COLBYS_MIN, ChainStage, CoordSystem,
     DEFAULT_GPU_CRUSH_BITS, DEFAULT_GPU_CRUSH_MIX, DEFAULT_GPU_DRIVE, GoFlavor, OutputEncoding,
-    RenderBackend, RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile,
+    PieceOptions, RenderBackend, RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile,
     SpeechInputMode, SpeechIntelligibility, SpeechOscillator, SpeechRenderOptions, Style,
     SurroundLayout, TimelineOptions, Trajectory, UglinessContour, analyze_wav_timeline,
     analyze_wav_with_options, available_effects, available_styles, backend_capabilities,
     backend_status_report, default_jobs, go_ugly_file_with_engine_contour_encoding,
     go_ugly_upmix_file_with_engine_contour_encoding, parse_chain_stage, point_to_xyz,
-    render_chain_to_wav_with_engine, render_speech_with_artifacts_to_wav_with_engine,
-    render_to_wav_with_engine, resolve_backend_plan, score_speech_intelligibility,
+    render_chain_to_wav_with_engine, render_piece_to_wav_with_engine,
+    render_speech_with_artifacts_to_wav_with_engine, render_to_wav_with_engine,
+    resolve_backend_plan, score_speech_intelligibility,
 };
 
 mod cli_core_commands;
 
 use cli_core_commands::{
-    analyze, backends, benchmark, chain, go, marathon, presets, render, render_pack, speech,
+    analyze, backends, benchmark, chain, go, marathon, piece, presets, render, render_pack, speech,
     speech_pack, styles,
 };
 
@@ -45,6 +46,8 @@ struct Cli {
 enum Command {
     /// Render an ugly sound to a WAV file.
     Render(RenderArgs),
+    /// Render a multichannel piece made of many short ugly sounds.
+    Piece(PieceArgs),
     /// Render chiptune speech from text using classic speech-chip-inspired models.
     Speech(SpeechArgs),
     /// Analyze a WAV file and report ugliness metrics.
@@ -131,6 +134,91 @@ struct RenderArgs {
     /// Parallel worker count (0 = auto).
     #[arg(long, default_value_t = 0)]
     jobs: usize,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
+}
+
+#[derive(Debug, Clone, Parser)]
+struct PieceArgs {
+    /// Output WAV path.
+    #[arg(short, long, default_value = "out/piece.wav")]
+    output: PathBuf,
+
+    /// Total piece duration in seconds.
+    #[arg(short = 'd', long, default_value_t = 12.0)]
+    duration: f64,
+
+    /// Output channel count.
+    #[arg(long, default_value_t = 2)]
+    channels: u16,
+
+    /// Sample rate in Hz.
+    #[arg(short = 'r', long, default_value_t = 192_000)]
+    sample_rate: u32,
+
+    #[command(flatten)]
+    output_format: OutputFormatArgs,
+
+    /// Optional seed for reproducible pieces.
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Optional style subset. Example: --styles glitch,punish,catastrophic
+    #[arg(long, value_enum, value_delimiter = ',', num_args = 1..)]
+    styles: Vec<StyleArg>,
+
+    /// Average number of short ugly events per second.
+    #[arg(long, default_value_t = 5.0)]
+    events_per_second: f64,
+
+    /// Minimum event duration in seconds.
+    #[arg(long, default_value_t = 0.03)]
+    min_event_duration: f64,
+
+    /// Maximum event duration in seconds.
+    #[arg(long, default_value_t = 0.35)]
+    max_event_duration: f64,
+
+    /// Minimum spatial spread across channels.
+    #[arg(long, default_value_t = 0.35)]
+    min_pan_width: f64,
+
+    /// Maximum spatial spread across channels.
+    #[arg(long, default_value_t = 1.75)]
+    max_pan_width: f64,
+
+    /// Base output gain (0.0..1.0).
+    #[arg(long, default_value_t = 0.7)]
+    gain: f64,
+
+    /// Normalize peak to this dBFS target.
+    #[arg(long, default_value_t = -0.6)]
+    normalize_dbfs: f64,
+
+    /// Disable normalization.
+    #[arg(long)]
+    no_normalize: bool,
+
+    /// Rendering backend.
+    #[arg(long, value_enum, default_value_t = RenderBackendArg::Auto)]
+    backend: RenderBackendArg,
+
+    /// Parallel worker count (0 = auto).
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+
+    /// GPU post-FX drive (backend post stage).
+    #[arg(long)]
+    gpu_drive: Option<f64>,
+
+    /// GPU post-FX bitcrush depth in bits.
+    #[arg(long)]
+    gpu_crush_bits: Option<f64>,
+
+    /// GPU post-FX blend between dry and crushed signal (0..1).
+    #[arg(long)]
+    gpu_crush_mix: Option<f64>,
 
     #[command(flatten)]
     randomness: RandomnessArgs,
@@ -1408,6 +1496,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Render(args) => render(args),
+        Command::Piece(args) => piece(args),
         Command::Speech(args) => speech(args),
         Command::SpeechPack(args) => speech_pack(args),
         Command::Analyze(args) => analyze(args),

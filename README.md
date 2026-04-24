@@ -5,6 +5,7 @@ UglySoundGenerator (`usg`) is a Rust command-line instrument for rendering, chai
 It is best understood as **three core tools** with a few power-user satellites:
 
 - `render`: synthesize ugly material from scratch
+- `piece`: assemble a multichannel piece from many short ugly events
 - `chain`: route a render or preset pipeline through multiple stages
 - `analyze`: measure the result in **Colbys**
 
@@ -43,6 +44,12 @@ Build a chain:
 cargo run -- chain --stages style:glitch,stutter,pop --duration 3.0 --output out/chain.wav
 ```
 
+Render a stereo ugly piece made of many short sounds:
+
+```bash
+cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
+```
+
 ## One Metric, One Meaning
 
 USG uses a single public ugliness unit: **Colbys (Co)**.
@@ -57,7 +64,7 @@ USG uses a single public ugliness unit: **Colbys (Co)**.
 
 The repo has a lot in it, so the intended hierarchy matters:
 
-1. Core creation: `render`, `chain`, `go`
+1. Core creation: `render`, `piece`, `chain`, `go`
 2. Core inspection: `analyze`
 3. Support surfaces: `presets`, `backends`, `benchmark`
 4. Power tools: `mutate`, `normalize-pack`, `evolve`, `speech`, `speech-pack`, `marathon`

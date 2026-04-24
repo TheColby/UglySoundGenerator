@@ -35,6 +35,29 @@ Key options:
 - `--backend <auto|cpu|metal|cuda>`
 - `--gpu-drive`, `--gpu-crush-bits`, `--gpu-crush-mix`
 
+### `usg piece`
+
+Render a full piece made from many short ugly sounds spread across stereo or arbitrary channel counts.
+
+```bash
+cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
+cargo run -- piece --output out/quad.wav --duration 45 --channels 4 --styles glitch,punish,catastrophic
+cargo run -- piece --output out/octo.wav --duration 60 --channels 8 --min-event-duration 0.02 --max-event-duration 0.18 --seed 42
+```
+
+Key options:
+
+- `--duration <SECONDS>`
+- `--channels <N>`
+- `--sample-rate <HZ>`
+- `--styles <STYLE,...>`
+- `--events-per-second <RATE>`
+- `--min-event-duration <SECONDS>`
+- `--max-event-duration <SECONDS>`
+- `--min-pan-width`, `--max-pan-width`
+- `--seed <U64>`
+- `--backend <auto|cpu|metal|cuda>`
+
 ### `usg chain`
 
 Build multi-stage synthesis/effect pipelines.

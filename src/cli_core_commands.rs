@@ -39,6 +39,100 @@ pub(super) fn render(args: RenderArgs) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn piece(args: PieceArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
+    let output_encoding = args.output_format.output_encoding()?;
+    let base_seed = apply_seed_controls(args.seed, randomness);
+    let engine = engine_from_args(
+        args.backend,
+        args.jobs,
+        args.gpu_drive,
+        args.gpu_crush_bits,
+        args.gpu_crush_mix,
+    );
+    let styles = selected_pack_styles(&args.styles);
+    let options = PieceOptions {
+        duration: randomize_duration(args.duration, randomness, base_seed),
+        sample_rate: args.sample_rate,
+        seed: Some(base_seed),
+        styles,
+        channels: args.channels,
+        gain: randomize_gain(
+            args.gain,
+            randomness,
+            derived_seed_label(base_seed, 0xA11C_E001),
+        ),
+        normalize: !args.no_normalize,
+        normalize_dbfs: randomize_normalize_dbfs(
+            args.normalize_dbfs,
+            randomness,
+            derived_seed_label(base_seed, 0xA11C_E002),
+        ),
+        output_encoding,
+        events_per_second: (args.events_per_second
+            * symmetric_factor(
+                derived_seed_label(base_seed, 0xA11C_E003),
+                randomness_amount(randomness.randomness, randomness.density_randomness),
+                0.55,
+            ))
+        .clamp(0.1, 10_000.0),
+        min_event_duration: (args.min_event_duration
+            * symmetric_factor(
+                derived_seed_label(base_seed, 0xA11C_E004),
+                randomness_amount(randomness.randomness, randomness.timing_randomness),
+                0.45,
+            ))
+        .clamp(0.005, args.duration.max(0.005)),
+        max_event_duration: (args.max_event_duration
+            * symmetric_factor(
+                derived_seed_label(base_seed, 0xA11C_E005),
+                randomness_amount(randomness.randomness, randomness.timing_randomness),
+                0.45,
+            ))
+        .clamp(0.005, args.duration.max(0.005)),
+        min_pan_width: (args.min_pan_width
+            * symmetric_factor(
+                derived_seed_label(base_seed, 0xA11C_E006),
+                randomness_amount(randomness.randomness, randomness.spectral_randomness),
+                0.5,
+            ))
+        .clamp(0.05, 64.0),
+        max_pan_width: (args.max_pan_width
+            * symmetric_factor(
+                derived_seed_label(base_seed, 0xA11C_E007),
+                randomness_amount(randomness.randomness, randomness.spectral_randomness),
+                0.5,
+            ))
+        .clamp(0.05, 64.0),
+    };
+    let options = PieceOptions {
+        min_event_duration: options.min_event_duration.min(options.duration),
+        max_event_duration: options
+            .max_event_duration
+            .max(options.min_event_duration)
+            .min(options.duration),
+        max_pan_width: options.max_pan_width.max(options.min_pan_width),
+        ..options
+    };
+    let summary = render_piece_to_wav_with_engine(&args.output, &options, &engine)
+        .with_context(|| format!("failed to write {}", args.output.display()))?;
+
+    println!(
+        "Rendered piece {} ({} frames @ {} Hz, channels={}, events={}, seed={}, format={}, backend={} -> {}, jobs={})",
+        summary.output.display(),
+        summary.frames,
+        summary.sample_rate,
+        summary.channels,
+        summary.events,
+        summary.seed,
+        summary.output_encoding,
+        summary.backend_requested,
+        summary.backend_active,
+        summary.jobs
+    );
+    Ok(())
+}
+
 pub(super) fn speech(args: SpeechArgs) -> Result<()> {
     let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;

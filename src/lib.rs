@@ -675,6 +675,45 @@ impl Default for RenderOptions {
 }
 
 #[derive(Debug, Clone)]
+pub struct PieceOptions {
+    pub duration: f64,
+    pub sample_rate: u32,
+    pub seed: Option<u64>,
+    pub styles: Vec<Style>,
+    pub channels: u16,
+    pub gain: f64,
+    pub normalize: bool,
+    pub normalize_dbfs: f64,
+    pub output_encoding: OutputEncoding,
+    pub events_per_second: f64,
+    pub min_event_duration: f64,
+    pub max_event_duration: f64,
+    pub min_pan_width: f64,
+    pub max_pan_width: f64,
+}
+
+impl Default for PieceOptions {
+    fn default() -> Self {
+        Self {
+            duration: 12.0,
+            sample_rate: 192_000,
+            seed: None,
+            styles: available_styles().to_vec(),
+            channels: 2,
+            gain: 0.7,
+            normalize: true,
+            normalize_dbfs: -0.6,
+            output_encoding: OutputEncoding::Float32,
+            events_per_second: 5.0,
+            min_event_duration: 0.03,
+            max_event_duration: 0.35,
+            min_pan_width: 0.35,
+            max_pan_width: 1.75,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SpeechRenderOptions {
     pub text: String,
     pub input_mode: SpeechInputMode,
@@ -785,6 +824,20 @@ pub struct RenderSummary {
     pub frames: usize,
     pub sample_rate: u32,
     pub style: Style,
+    pub seed: u64,
+    pub output_encoding: OutputEncoding,
+    pub backend_requested: RenderBackend,
+    pub backend_active: RenderBackend,
+    pub jobs: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PieceSummary {
+    pub output: PathBuf,
+    pub frames: usize,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub events: usize,
     pub seed: u64,
     pub output_encoding: OutputEncoding,
     pub backend_requested: RenderBackend,
@@ -1181,6 +1234,10 @@ pub fn render_to_wav(output: &Path, opts: &RenderOptions) -> Result<RenderSummar
     render_to_wav_with_engine(output, opts, &RenderEngine::default())
 }
 
+pub fn render_piece_to_wav(output: &Path, opts: &PieceOptions) -> Result<PieceSummary> {
+    render_piece_to_wav_with_engine(output, opts, &RenderEngine::default())
+}
+
 pub fn render_to_wav_with_engine(
     output: &Path,
     opts: &RenderOptions,
@@ -1214,6 +1271,85 @@ pub fn render_to_wav_with_engine(
         frames: frames_usize,
         sample_rate: opts.sample_rate,
         style: opts.style,
+        seed,
+        output_encoding: opts.output_encoding,
+        backend_requested: plan.requested,
+        backend_active: plan.active,
+        jobs: plan.jobs,
+    })
+}
+
+pub fn render_piece_to_wav_with_engine(
+    output: &Path,
+    opts: &PieceOptions,
+    engine: &RenderEngine,
+) -> Result<PieceSummary> {
+    validate_piece_options(opts)?;
+    let plan = resolve_backend_plan(engine)?;
+    let seed = opts.seed.unwrap_or_else(seed_from_time);
+    let total_frames = duration_to_frames(opts.duration, opts.sample_rate)?;
+    let frames_usize = usize::try_from(total_frames)
+        .map_err(|_| anyhow!("requested piece render is too large for this platform"))?;
+    let channel_count = usize::from(opts.channels);
+    let event_count = (opts.duration * opts.events_per_second).round().max(1.0) as usize;
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let mut channels = vec![vec![0.0_f64; frames_usize]; channel_count];
+
+    for _ in 0..event_count {
+        let style = opts.styles[rng.gen_range(0..opts.styles.len())];
+        let event_duration_s = rng.gen_range(opts.min_event_duration..=opts.max_event_duration);
+        let event_frames = usize::try_from(duration_to_frames(event_duration_s, opts.sample_rate)?)
+            .map_err(|_| anyhow!("piece event is too large for this platform"))?
+            .max(1)
+            .min(frames_usize);
+        let max_start = frames_usize.saturating_sub(event_frames);
+        let start = if max_start == 0 {
+            0
+        } else {
+            rng.gen_range(0..=max_start)
+        };
+        let event_seed = rng.r#gen::<u64>();
+        let event_gain = (opts.gain * rng.gen_range(0.45_f64..1.0_f64)).clamp(0.0, 1.0);
+        let mut event = render_samples_with_plan(
+            event_frames,
+            opts.sample_rate as f64,
+            style,
+            event_gain,
+            event_seed,
+            &plan,
+        )?;
+        apply_event_envelope(&mut event, opts.sample_rate);
+
+        let center = if channel_count <= 1 {
+            0.0
+        } else {
+            rng.gen_range(0.0..(channel_count - 1) as f64)
+        };
+        let width = rng.gen_range(opts.min_pan_width..=opts.max_pan_width);
+        let weights = piece_pan_weights(channel_count, center, width);
+
+        for (ch_idx, channel) in channels.iter_mut().enumerate() {
+            let weight = weights[ch_idx];
+            if weight <= EPS64 {
+                continue;
+            }
+            for (frame_idx, &sample) in event.iter().enumerate() {
+                channel[start + frame_idx] += sample * weight;
+            }
+        }
+    }
+
+    if opts.normalize {
+        normalize_peak_dbfs_channels(&mut channels, opts.normalize_dbfs);
+    }
+    write_wav_channels(output, opts.sample_rate, &channels, opts.output_encoding)?;
+
+    Ok(PieceSummary {
+        output: output.to_path_buf(),
+        frames: frames_usize,
+        sample_rate: opts.sample_rate,
+        channels: opts.channels,
+        events: event_count,
         seed,
         output_encoding: opts.output_encoding,
         backend_requested: plan.requested,
@@ -1608,6 +1744,40 @@ fn render_speech_samples_with_plan(
 
     apply_backend_post(out.as_mut_slice(), plan)?;
     Ok((out, timeline))
+}
+
+fn apply_event_envelope(samples: &mut [f64], sample_rate: u32) {
+    if samples.len() < 2 {
+        return;
+    }
+    let ramp_frames = ((sample_rate as f64 * 0.004).round() as usize)
+        .clamp(8, samples.len().max(2) / 2)
+        .max(1);
+    for i in 0..ramp_frames.min(samples.len()) {
+        let w = i as f64 / ramp_frames as f64;
+        samples[i] *= w;
+        let tail_idx = samples.len() - 1 - i;
+        samples[tail_idx] *= w;
+    }
+}
+
+fn piece_pan_weights(channels: usize, center: f64, width: f64) -> Vec<f64> {
+    let sigma = width.max(0.05);
+    let mut weights = Vec::with_capacity(channels);
+    let mut sum = 0.0_f64;
+    for idx in 0..channels {
+        let dist = (idx as f64 - center) / sigma;
+        let w = (-0.5 * dist * dist).exp();
+        weights.push(w);
+        sum += w;
+    }
+    if sum <= EPS64 {
+        return vec![1.0 / channels.max(1) as f64; channels];
+    }
+    for weight in &mut weights {
+        *weight /= sum;
+    }
+    weights
 }
 
 fn render_to_wav_streaming(
@@ -2428,6 +2598,52 @@ pub fn validate_render_options(opts: &RenderOptions) -> Result<()> {
     }
     if opts.normalize_dbfs > 0.0 {
         return Err(anyhow!("normalize-dbfs must be <= 0.0"));
+    }
+    Ok(())
+}
+
+pub fn validate_piece_options(opts: &PieceOptions) -> Result<()> {
+    if !(0.1..=MAX_RENDER_DURATION_S).contains(&opts.duration) {
+        return Err(anyhow!(
+            "duration must be between 0.1 and {} seconds",
+            MAX_RENDER_DURATION_S as u64
+        ));
+    }
+    if !(8_000..=192_000).contains(&opts.sample_rate) {
+        return Err(anyhow!("sample-rate must be between 8000 and 192000"));
+    }
+    if !(0.0..=1.0).contains(&opts.gain) {
+        return Err(anyhow!("gain must be between 0.0 and 1.0"));
+    }
+    if opts.normalize_dbfs > 0.0 {
+        return Err(anyhow!("normalize-dbfs must be <= 0.0"));
+    }
+    if opts.channels == 0 || opts.channels > 64 {
+        return Err(anyhow!("channels must be between 1 and 64"));
+    }
+    if opts.styles.is_empty() {
+        return Err(anyhow!("piece requires at least one style"));
+    }
+    if !(0.1..=10_000.0).contains(&opts.events_per_second) {
+        return Err(anyhow!("events-per-second must be between 0.1 and 10000.0"));
+    }
+    if !(0.005..=opts.duration).contains(&opts.min_event_duration) {
+        return Err(anyhow!(
+            "min-event-duration must be at least 0.005 seconds and no greater than duration"
+        ));
+    }
+    if !(opts.min_event_duration..=opts.duration).contains(&opts.max_event_duration) {
+        return Err(anyhow!(
+            "max-event-duration must be at least min-event-duration and no greater than duration"
+        ));
+    }
+    if !(0.05..=64.0).contains(&opts.min_pan_width) {
+        return Err(anyhow!("min-pan-width must be between 0.05 and 64.0"));
+    }
+    if !(opts.min_pan_width..=64.0).contains(&opts.max_pan_width) {
+        return Err(anyhow!(
+            "max-pan-width must be at least min-pan-width and no greater than 64.0"
+        ));
     }
     Ok(())
 }
