@@ -80,6 +80,42 @@ fn analyze_supports_joke_mode() {
 }
 
 #[test]
+fn analyze_json_includes_score_metadata() {
+    let dir = temp_dir("analyze_json_meta");
+    let wav = dir.join("input.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "hum",
+        ])
+        .output()
+        .expect("render command");
+    assert!(render.status.success(), "render failed");
+
+    let analyze = Command::new(bin())
+        .args(["analyze", wav.to_str().expect("wav path"), "--json"])
+        .output()
+        .expect("analyze json command");
+    assert!(analyze.status.success(), "analyze --json failed");
+    let stdout = String::from_utf8_lossy(&analyze.stdout);
+    assert!(
+        stdout.contains("\"score_metadata\""),
+        "stdout was:\n{stdout}"
+    );
+    assert!(stdout.contains("\"profile\""), "stdout was:\n{stdout}");
+    assert!(
+        stdout.contains("\"calibrated_from_listening_tests\": false"),
+        "stdout was:\n{stdout}"
+    );
+}
+
+#[test]
 fn render_pack_reports_scores_as_out_of_1000() {
     let dir = temp_dir("pack");
     let pack = dir.join("pack");

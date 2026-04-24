@@ -18,6 +18,9 @@ const EPS64: f64 = 1e-12;
 const BARK_BANDS: usize = 24;
 const MAX_RENDER_DURATION_S: f64 = 86_400.0;
 const STREAM_RENDER_THRESHOLD_FRAMES: u64 = 192_000 * 120;
+pub const COLBYS_MIN: i32 = -1000;
+pub const COLBYS_NEUTRAL: i32 = 0;
+pub const COLBYS_MAX: i32 = 1000;
 
 fn stream_render_threshold_frames() -> u64 {
     std::env::var("USG_STREAM_THRESHOLD_FRAMES")
@@ -385,7 +388,8 @@ impl Default for ContourInterpolation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UglinessContourPoint {
     pub t: f64,
-    pub level: u16,
+    #[serde(alias = "level")]
+    pub colbys: i32,
 }
 
 fn default_contour_version() -> u16 {
@@ -848,7 +852,8 @@ pub struct GoSummary {
     pub frames: usize,
     pub sample_rate: u32,
     pub channels: u16,
-    pub level: u16,
+    pub target_colbys: i32,
+    pub target_intensity: f64,
     pub flavor: GoFlavor,
     pub seed: u64,
     pub output_encoding: OutputEncoding,
@@ -856,6 +861,17 @@ pub struct GoSummary {
     pub backend_requested: RenderBackend,
     pub backend_active: RenderBackend,
     pub jobs: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScoreMetadata {
+    pub unit: &'static str,
+    pub min: i32,
+    pub neutral: i32,
+    pub max: i32,
+    pub profile: &'static str,
+    pub version: &'static str,
+    pub calibrated_from_listening_tests: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -897,6 +913,7 @@ pub struct PsychoAnalysis {
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisReport {
     pub model: String,
+    pub score_metadata: ScoreMetadata,
     /// Ugliness in Colbys: -1000 (cleanest) to +1000 (most ugly), 0 = neutral.
     pub colbys: f64,
     pub basic: Analysis,
@@ -1950,7 +1967,7 @@ pub fn write_samples_to_wav(path: &Path, sample_rate: u32, samples: &[f64]) -> R
 pub fn go_ugly_file(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -1959,7 +1976,7 @@ pub fn go_ugly_file(
     go_ugly_file_with_engine_contour(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -1972,7 +1989,7 @@ pub fn go_ugly_file(
 pub fn go_ugly_file_with_engine(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -1982,7 +1999,7 @@ pub fn go_ugly_file_with_engine(
     go_ugly_file_with_engine_contour(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -1995,7 +2012,7 @@ pub fn go_ugly_file_with_engine(
 pub fn go_ugly_file_with_engine_contour(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2006,7 +2023,7 @@ pub fn go_ugly_file_with_engine_contour(
     go_ugly_file_with_engine_contour_encoding(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -2021,7 +2038,7 @@ pub fn go_ugly_file_with_engine_contour(
 pub fn go_ugly_file_with_engine_contour_encoding(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2038,7 +2055,7 @@ pub fn go_ugly_file_with_engine_contour_encoding(
     go_ugly_file_with_engine_impl(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -2053,7 +2070,7 @@ pub fn go_ugly_file_with_engine_contour_encoding(
 fn go_ugly_file_with_engine_impl(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2063,8 +2080,12 @@ fn go_ugly_file_with_engine_impl(
     output_sample_rate: Option<u32>,
     output_encoding: OutputEncoding,
 ) -> Result<GoSummary> {
-    if !(1..=1000).contains(&level) {
-        return Err(anyhow!("level must be between 1 and 1000"));
+    if !(COLBYS_MIN..=COLBYS_MAX).contains(&target_colbys) {
+        return Err(anyhow!(
+            "target Colbys must be between {} and {}",
+            COLBYS_MIN,
+            COLBYS_MAX
+        ));
     }
     if normalize_dbfs > 0.0 {
         return Err(anyhow!("normalize-dbfs must be <= 0.0"));
@@ -2091,10 +2112,18 @@ fn go_ugly_file_with_engine_impl(
     let base_seed = seed.unwrap_or_else(seed_from_time);
     let chosen = flavor.unwrap_or(GoFlavor::Random);
     let sample_rate_f64 = sample_rate as f64;
+    let target_intensity = colbys_to_intensity(target_colbys);
 
     for (ch_idx, channel) in channels.iter_mut().enumerate() {
         let ch_seed = derive_seed(base_seed, ch_idx as u64);
-        apply_go_ugly_to_channel(channel, sample_rate_f64, level, chosen, ch_seed, contour);
+        apply_go_ugly_to_channel(
+            channel,
+            sample_rate_f64,
+            target_colbys,
+            chosen,
+            ch_seed,
+            contour,
+        );
         apply_backend_post(channel.as_mut_slice(), &plan)?;
     }
 
@@ -2108,7 +2137,8 @@ fn go_ugly_file_with_engine_impl(
         frames,
         sample_rate,
         channels: channel_count,
-        level,
+        target_colbys,
+        target_intensity,
         flavor: chosen,
         seed: base_seed,
         output_encoding,
@@ -2122,7 +2152,7 @@ fn go_ugly_file_with_engine_impl(
 pub fn go_ugly_upmix_file_with_engine(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2133,7 +2163,7 @@ pub fn go_ugly_upmix_file_with_engine(
     go_ugly_upmix_file_with_engine_contour(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -2147,7 +2177,7 @@ pub fn go_ugly_upmix_file_with_engine(
 pub fn go_ugly_upmix_file_with_engine_contour(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2159,7 +2189,7 @@ pub fn go_ugly_upmix_file_with_engine_contour(
     go_ugly_upmix_file_with_engine_contour_encoding(
         input,
         output,
-        level,
+        target_colbys,
         flavor,
         seed,
         normalize,
@@ -2175,7 +2205,7 @@ pub fn go_ugly_upmix_file_with_engine_contour(
 pub fn go_ugly_upmix_file_with_engine_contour_encoding(
     input: &Path,
     output: &Path,
-    level: u16,
+    target_colbys: i32,
     flavor: Option<GoFlavor>,
     seed: Option<u64>,
     normalize: bool,
@@ -2190,8 +2220,12 @@ pub fn go_ugly_upmix_file_with_engine_contour_encoding(
         validate_ugliness_contour(c)?;
     }
 
-    if !(1..=1000).contains(&level) {
-        return Err(anyhow!("level must be between 1 and 1000"));
+    if !(COLBYS_MIN..=COLBYS_MAX).contains(&target_colbys) {
+        return Err(anyhow!(
+            "target Colbys must be between {} and {}",
+            COLBYS_MIN,
+            COLBYS_MAX
+        ));
     }
     if normalize_dbfs > 0.0 {
         return Err(anyhow!("normalize-dbfs must be <= 0.0"));
@@ -2214,10 +2248,11 @@ pub fn go_ugly_upmix_file_with_engine_contour_encoding(
     let plan = resolve_backend_plan(engine)?;
     let base_seed = seed.unwrap_or_else(seed_from_time);
     let chosen = flavor.unwrap_or(GoFlavor::Random);
+    let target_intensity = colbys_to_intensity(target_colbys);
     apply_go_ugly_to_channel(
         mono.as_mut_slice(),
         sample_rate as f64,
-        level,
+        target_colbys,
         chosen,
         base_seed,
         contour,
@@ -2246,7 +2281,8 @@ pub fn go_ugly_upmix_file_with_engine_contour_encoding(
         frames,
         sample_rate,
         channels: spatial.layout.channels(),
-        level,
+        target_colbys,
+        target_intensity,
         flavor: chosen,
         seed: base_seed,
         output_encoding,
@@ -2298,6 +2334,10 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
 
     Ok(AnalysisReport {
         model: opts.model.as_str().to_string(),
+        score_metadata: match opts.model {
+            AnalyzeModel::Basic => basic_score_metadata(),
+            AnalyzeModel::Psycho => psycho_score_metadata(),
+        },
         colbys,
         basic,
         psycho,
@@ -2555,10 +2595,12 @@ pub fn validate_ugliness_contour(contour: &UglinessContour) -> Result<()> {
                 p.t
             ));
         }
-        if !(0..=1000).contains(&p.level) {
+        if !(COLBYS_MIN..=COLBYS_MAX).contains(&p.colbys) {
             return Err(anyhow!(
-                "contour point {idx} has invalid level={} (expected 0..=1000)",
-                p.level
+                "contour point {idx} has invalid colbys={} (expected {}..={})",
+                p.colbys,
+                COLBYS_MIN,
+                COLBYS_MAX
             ));
         }
         if p.t < prev_t {
@@ -2571,6 +2613,35 @@ pub fn validate_ugliness_contour(contour: &UglinessContour) -> Result<()> {
         prev_t = p.t;
     }
     Ok(())
+}
+
+pub fn colbys_to_intensity(colbys: i32) -> f64 {
+    let clamped = colbys.clamp(COLBYS_MIN, COLBYS_MAX) as f64;
+    ((clamped - COLBYS_MIN as f64) / (COLBYS_MAX - COLBYS_MIN) as f64).clamp(0.0, 1.0)
+}
+
+fn basic_score_metadata() -> ScoreMetadata {
+    ScoreMetadata {
+        unit: "Colbys",
+        min: COLBYS_MIN,
+        neutral: COLBYS_NEUTRAL,
+        max: COLBYS_MAX,
+        profile: "usg-basic-v1",
+        version: "1",
+        calibrated_from_listening_tests: false,
+    }
+}
+
+fn psycho_score_metadata() -> ScoreMetadata {
+    ScoreMetadata {
+        unit: "Colbys",
+        min: COLBYS_MIN,
+        neutral: COLBYS_NEUTRAL,
+        max: COLBYS_MAX,
+        profile: "usg-psycho-v1",
+        version: "1",
+        calibrated_from_listening_tests: false,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -4668,6 +4739,54 @@ fn mixdown_mono(channel_data: &[Vec<f64>]) -> Vec<f64> {
     mono
 }
 
+struct BasicScoreProfile {
+    clip_pct_weight: f64,
+    harshness_weight: f64,
+    zero_crossing_weight: f64,
+    scale: f64,
+    offset: f64,
+}
+
+const BASIC_SCORE_PROFILE_V1: BasicScoreProfile = BasicScoreProfile {
+    clip_pct_weight: 1.6,
+    harshness_weight: 45.0,
+    zero_crossing_weight: 200.0,
+    scale: 20.0,
+    offset: -1000.0,
+};
+
+struct PsychoScoreProfile {
+    bias: f64,
+    clip_weight: f64,
+    roughness_weight: f64,
+    sharpness_weight: f64,
+    dissonance_weight: f64,
+    transient_weight: f64,
+    harshness_weight: f64,
+    inharmonicity_weight: f64,
+    binaural_beat_weight: f64,
+    beat_conflict_weight: f64,
+    tritone_tension_weight: f64,
+    wolf_fifth_weight: f64,
+    harmonicity_relief_weight: f64,
+}
+
+const PSYCHO_SCORE_PROFILE_V1: PsychoScoreProfile = PsychoScoreProfile {
+    bias: -4.05,
+    clip_weight: 1.6,
+    roughness_weight: 1.3,
+    sharpness_weight: 1.0,
+    dissonance_weight: 1.0,
+    transient_weight: 1.2,
+    harshness_weight: 0.9,
+    inharmonicity_weight: 1.25,
+    binaural_beat_weight: 0.85,
+    beat_conflict_weight: 1.05,
+    tritone_tension_weight: 0.85,
+    wolf_fifth_weight: 0.75,
+    harmonicity_relief_weight: 0.45,
+};
+
 fn analyze_samples_base(samples: &[f64], sample_rate: u32, channels: u16) -> Analysis {
     let len = samples.len().max(1) as f64;
     let mut peak = 0.0_f64;
@@ -4703,10 +4822,13 @@ fn analyze_samples_base(samples: &[f64], sample_rate: u32, channels: u16) -> Ana
     let zero_crossing_rate = zero_crossings as f64 / len;
     let clipped_pct = (clipped_count as f64 / len) * 100.0;
     let harshness_ratio = (diff_energy / sum_sq.max(EPS64)).sqrt();
-    let colbys = ((clipped_pct * 1.6 + harshness_ratio * 45.0 + zero_crossing_rate * 200.0)
-        * 20.0
-        - 1000.0)
-        .clamp(-1000.0, 1000.0);
+    let basic_profile = BASIC_SCORE_PROFILE_V1;
+    let colbys = ((clipped_pct * basic_profile.clip_pct_weight
+        + harshness_ratio * basic_profile.harshness_weight
+        + zero_crossing_rate * basic_profile.zero_crossing_weight)
+        * basic_profile.scale
+        + basic_profile.offset)
+        .clamp(COLBYS_MIN as f64, COLBYS_MAX as f64);
 
     Analysis {
         sample_rate,
@@ -4757,21 +4879,23 @@ fn analyze_samples_psycho(
     let clip_norm = (basic.clipped_pct / 10.0).clamp(0.0, 1.0);
     let harshness_norm = (basic.harshness_ratio / (0.28 + 0.00001 * nyquist)).clamp(0.0, 1.0);
 
-    let weighted_sum = -4.05
-        + 1.6 * clip_norm
-        + 1.3 * roughness_norm
-        + 1.0 * sharpness_norm
-        + 1.0 * dissonance_norm
-        + 1.2 * transient_norm
-        + 0.9 * harshness_norm
-        + 1.25 * inharmonicity_norm
-        + 0.85 * binaural_beat_norm
-        + 1.05 * beat_conflict_norm
-        + 0.85 * tritone_tension_norm
-        + 0.75 * wolf_fifth_norm
-        - 0.45 * harmonicity_norm;
+    let psycho_profile = PSYCHO_SCORE_PROFILE_V1;
+    let weighted_sum = psycho_profile.bias
+        + psycho_profile.clip_weight * clip_norm
+        + psycho_profile.roughness_weight * roughness_norm
+        + psycho_profile.sharpness_weight * sharpness_norm
+        + psycho_profile.dissonance_weight * dissonance_norm
+        + psycho_profile.transient_weight * transient_norm
+        + psycho_profile.harshness_weight * harshness_norm
+        + psycho_profile.inharmonicity_weight * inharmonicity_norm
+        + psycho_profile.binaural_beat_weight * binaural_beat_norm
+        + psycho_profile.beat_conflict_weight * beat_conflict_norm
+        + psycho_profile.tritone_tension_weight * tritone_tension_norm
+        + psycho_profile.wolf_fifth_weight * wolf_fifth_norm
+        - psycho_profile.harmonicity_relief_weight * harmonicity_norm;
 
-    let colbys = (2000.0 * sigmoid(weighted_sum) - 1000.0).clamp(-1000.0, 1000.0);
+    let colbys =
+        (2000.0 * sigmoid(weighted_sum) - 1000.0).clamp(COLBYS_MIN as f64, COLBYS_MAX as f64);
 
     PsychoAnalysis {
         clip_norm,
@@ -5352,7 +5476,7 @@ fn compute_transient_norm(spectra: &[Vec<f64>]) -> f64 {
 fn apply_go_ugly_to_channel(
     buffer: &mut [f64],
     sample_rate: f64,
-    level: u16,
+    target_colbys: i32,
     flavor: GoFlavor,
     seed: u64,
     contour: Option<&UglinessContour>,
@@ -5362,7 +5486,7 @@ fn apply_go_ugly_to_channel(
     }
 
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
-    let intensity = (level as f64 / 1000.0).clamp(0.001, 1.0);
+    let intensity = colbys_to_intensity(target_colbys).clamp(0.001, 1.0);
     for x in buffer.iter_mut() {
         *x = soft_clip(*x * (1.0 + 1.5 * intensity));
     }
@@ -5446,32 +5570,36 @@ fn random_go_mode(rng: &mut ChaCha8Rng) -> GoFlavor {
 
 fn contour_level_at(contour: &UglinessContour, t_norm: f64) -> f64 {
     if contour.points.is_empty() {
-        return 1.0;
+        return COLBYS_NEUTRAL as f64;
     }
     if contour.points.len() == 1 {
-        return contour.points[0].level as f64;
+        return contour.points[0].colbys as f64;
     }
     let t = t_norm.clamp(0.0, 1.0);
     if t <= contour.points[0].t {
-        return contour.points[0].level as f64;
+        return contour.points[0].colbys as f64;
     }
     for pair in contour.points.windows(2) {
         let a = &pair[0];
         let b = &pair[1];
         if t <= b.t {
             if (b.t - a.t).abs() <= EPS64 {
-                return b.level as f64;
+                return b.colbys as f64;
             }
             match contour.interpolation {
-                ContourInterpolation::Step => return a.level as f64,
+                ContourInterpolation::Step => return a.colbys as f64,
                 ContourInterpolation::Linear => {
                     let alpha = ((t - a.t) / (b.t - a.t)).clamp(0.0, 1.0);
-                    return a.level as f64 + alpha * (b.level as f64 - a.level as f64);
+                    return a.colbys as f64 + alpha * (b.colbys as f64 - a.colbys as f64);
                 }
             }
         }
     }
-    contour.points.last().map(|p| p.level as f64).unwrap_or(1.0)
+    contour
+        .points
+        .last()
+        .map(|p| p.colbys as f64)
+        .unwrap_or(COLBYS_NEUTRAL as f64)
 }
 
 fn apply_ugliness_contour(
@@ -5487,8 +5615,9 @@ fn apply_ugliness_contour(
     let denom = (buffer.len() - 1).max(1) as f64;
     for (i, x) in buffer.iter_mut().enumerate() {
         let t_norm = i as f64 / denom;
-        let level = contour_level_at(contour, t_norm).clamp(1.0, 1000.0);
-        let intensity = (level / 1000.0).clamp(0.001, 1.0);
+        let target_colbys =
+            contour_level_at(contour, t_norm).clamp(COLBYS_MIN as f64, COLBYS_MAX as f64);
+        let intensity = colbys_to_intensity(target_colbys.round() as i32).clamp(0.001, 1.0);
         let t = i as f64 / sample_rate.max(1.0);
 
         let drive = 1.0 + 5.5 * intensity;
@@ -5999,8 +6128,14 @@ mod tests {
             description: None,
             interpolation: ContourInterpolation::Linear,
             points: vec![
-                UglinessContourPoint { t: 0.0, level: 100 },
-                UglinessContourPoint { t: 1.0, level: 900 },
+                UglinessContourPoint {
+                    t: 0.0,
+                    colbys: -800,
+                },
+                UglinessContourPoint {
+                    t: 1.0,
+                    colbys: 800,
+                },
             ],
         };
         let step = UglinessContour {
@@ -6009,12 +6144,45 @@ mod tests {
             description: None,
             interpolation: ContourInterpolation::Step,
             points: vec![
-                UglinessContourPoint { t: 0.0, level: 100 },
-                UglinessContourPoint { t: 1.0, level: 900 },
+                UglinessContourPoint {
+                    t: 0.0,
+                    colbys: -800,
+                },
+                UglinessContourPoint {
+                    t: 1.0,
+                    colbys: 800,
+                },
             ],
         };
-        assert!((contour_level_at(&linear, 0.5) - 500.0).abs() < 1e-6);
-        assert_eq!(contour_level_at(&step, 0.5), 100.0);
+        assert!(contour_level_at(&linear, 0.5).abs() < 1e-6);
+        assert_eq!(contour_level_at(&step, 0.5), -800.0);
+    }
+
+    #[test]
+    fn contour_json_supports_legacy_level_and_new_colbys_keys() {
+        let legacy = r#"{
+            "version": 1,
+            "interpolation": "linear",
+            "points": [
+                { "t": 0.0, "level": -250 },
+                { "t": 1.0, "level": 900 }
+            ]
+        }"#;
+        let modern = r#"{
+            "version": 1,
+            "interpolation": "linear",
+            "points": [
+                { "t": 0.0, "colbys": -250 },
+                { "t": 1.0, "colbys": 900 }
+            ]
+        }"#;
+
+        let legacy_contour: UglinessContour = serde_json::from_str(legacy).expect("legacy contour");
+        let modern_contour: UglinessContour = serde_json::from_str(modern).expect("modern contour");
+        assert_eq!(legacy_contour.points[0].colbys, -250);
+        assert_eq!(modern_contour.points[1].colbys, 900);
+        validate_ugliness_contour(&legacy_contour).expect("legacy contour valid");
+        validate_ugliness_contour(&modern_contour).expect("modern contour valid");
     }
 
     #[test]
@@ -6197,7 +6365,7 @@ mod tests {
         )
         .expect("go uglify");
 
-        assert_eq!(summary.level, 8);
+        assert_eq!(summary.target_colbys, 8);
         assert_eq!(summary.flavor, GoFlavor::Glitch);
         assert!(summary.frames > 1000);
         let analyzed = analyze_wav(&out_path).expect("analyze go output");

@@ -16,11 +16,19 @@ jobs:
         run: cargo test --all-targets
       - name: Feature Check CUDA
         run: cargo check --all-targets --features cuda
+      - name: Repo Audit
+        run: ./scripts/verify_repo.sh
+      - name: CLI Help Smoke
+        run: cargo run --quiet -- --help >/dev/null
+      - name: CLI Presets Smoke
+        run: cargo run --quiet -- presets >/dev/null
 
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        run: cargo test --all-targets
       - name: Feature Check Metal
         run: cargo check --all-targets --features metal

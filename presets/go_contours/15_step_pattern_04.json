@@ -3,23 +3,23 @@
   "points": [
     {
       "t": 0.0,
-      "level": 265
+      "colbys": 265
     },
     {
       "t": 0.2,
-      "level": 255
+      "colbys": 255
     },
     {
       "t": 0.4,
-      "level": 215
+      "colbys": 215
     },
     {
       "t": 0.7,
-      "level": 685
+      "colbys": 685
     },
     {
       "t": 1.0,
-      "level": 355
+      "colbys": 355
     }
   ],
   "version": 1,

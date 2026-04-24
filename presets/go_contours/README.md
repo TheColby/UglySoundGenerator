@@ -1,6 +1,6 @@
 # USG Go Contour Presets
 
-This folder contains 33 JSON presets for `usg go --level-contour ...`.
+This folder contains 33 JSON presets for `usg go --level-contour ...`, using `colbys` as the contour key..
 
 Each preset is versioned and currently uses `"version": 1`. The CLI rejects unsupported contour versions instead of silently guessing.
 
@@ -19,5 +19,5 @@ cargo run -- go out/clean.wav --type punish --level-contour presets/go_contours/
 Inline JSON still works:
 
 ```bash
-cargo run -- go out/clean.wav --type glitch --level-contour-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"level":100},{"t":0.5,"level":900},{"t":1.0,"level":250}]}' --output out/clean_inline.go.wav
+cargo run -- go out/clean.wav --type glitch --level-contour-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"colbys":100},{"t":0.5,"colbys":900},{"t":1.0,"colbys":250}]}' --output out/clean_inline.go.wav
 ```
