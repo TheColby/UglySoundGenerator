@@ -14,18 +14,20 @@ The next milestones focus on making those surfaces deeper, more reproducible, an
 
 As of `v0.4.0`, USG already includes:
 
-- `render`, `chain`, `go`, and `analyze` as the main product surface
-- speech synthesis with chip-inspired profiles and phoneme timelines
+- `render`, `piece`, `chain`, `go`, and `analyze` as the main product surface
+- speech synthesis with chip-inspired profiles, phoneme timelines, and analysis export
 - seeded reproducibility and controlled randomness knobs
 - timeline and JSON analysis outputs
 - contour-driven `go` processing and multichannel upmix workflows
+- multichannel `piece` generation, including named Atmos-style layouts
+- colored interactive progress feedback during piece assembly
 - example corpus generation and repo verification scripts
 
 ## Near-Term Priorities
 
-### `v0.4.x`: Controlled Randomness Everywhere
+### `v0.4.x`: Composition And Randomness
 
-Goal: make randomness a first-class composition surface instead of a side option.
+Goal: make randomness and long-form generation feel like first-class composition surfaces rather than side options.
 
 Planned work:
 
@@ -34,6 +36,8 @@ Planned work:
 - expose separate timing, spectral, density, spatial, and articulation randomness on more commands
 - add seed manifests so long-running batch jobs can be reproduced exactly from one file
 - add “reroll just one layer” workflows for speech units, stages, and contours
+- deepen `piece` with phrase-scale structure, section contrast, burst logic, and reusable scene presets
+- expand spatial composition beyond raw channel spread: motion curves, region constraints, and speaker-family targeting
 
 ### `v0.5`: Speech System Deepening
 
@@ -47,6 +51,7 @@ Planned work:
 - more oscillator and excitation families for voiced, noisy, nasal, breathy, robotic, and broken speech
 - phrase controls tuned separately for letters, words, sentences, and paragraphs
 - better speech-pack ranking between intelligibility and ugliness, with clearer tradeoff reporting
+- presets and recipe packs for specific eras, chips, and “wrong but useful” historical misbehaviors
 
 ### `v0.6`: Analysis, Search, And Explanation
 
@@ -59,6 +64,7 @@ Planned work:
 - “why this scored ugly” summaries for both human-readable and machine-readable output
 - stronger contracts for seeded reproducibility and profile stability across releases
 - benchmark runs that report both performance and score consistency
+- better analysis of multichannel and Atmos-style pieces, including spatial activity summaries
 
 ## Medium-Term Themes
 
@@ -73,6 +79,7 @@ Planned work:
 - grow the preset library for `chain`, `go`, speech profiles, and randomness recipes
 - add curated “families” of ugly sound recipes with predictable intent
 - improve preset discoverability in the CLI and docs
+- add piece-scene presets such as `drone-field`, `failure-chamber`, `arcade-collapse`, and `alarm-choir`
 
 ### Corpus And Research Support
 
@@ -90,11 +97,21 @@ The long-term ambition is for USG to be useful in three overlapping modes:
 
 That means future work should keep balancing spectacle with clarity: more range, better docs, stronger contracts, and less hidden behavior.
 
+## Recommended Next Focus
+
+If we want the highest-payoff next step, it should be:
+
+1. make `piece` more musical at the macro level with sections, ramps, rests, and return points
+2. make speech more controllable at the micro level with stronger phoneme and timing diagnostics
+3. make analysis explain itself better so users can connect what they hear to what USG measured
+
+That sequence keeps the repo balanced between instrument, composition tool, and research toy.
+
 ## Visual Track
 
 ```mermaid
 flowchart TD
-  A["v0.4.0 baseline"] --> B["v0.4.x randomness as a system"]
+  A["v0.4.0 baseline with piece and speech"] --> B["v0.4.x composition and randomness"]
   B --> C["v0.5 deeper chip speech"]
   C --> D["v0.6 analysis and explanation"]
   D --> E["modular research-grade ugliness lab"]
