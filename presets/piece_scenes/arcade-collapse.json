@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "kind": "piece_scene",
+  "name": "arcade-collapse",
+  "description": "Fast cabinet-noise montage with crunchy tone shards, bad clocks, and over-bright failures.",
+  "command": "piece",
+  "args": {
+    "duration": 75.0,
+    "layout": "quad",
+    "styles": [
+      "digital",
+      "buzz",
+      "pop",
+      "glitch",
+      "spank"
+    ],
+    "events_per_second": 12.0,
+    "min_event_duration": 0.015,
+    "max_event_duration": 0.16,
+    "min_pan_width": 0.45,
+    "max_pan_width": 1.8,
+    "gain": 0.64,
+    "normalize_dbfs": -0.7,
+    "random_preset": "feral"
+  },
+  "sections": [
+    {
+      "name": "attract",
+      "range": "0.00..0.20",
+      "intent": "Bright pops and short digital calls establish a broken game loop."
+    },
+    {
+      "name": "coin-jam",
+      "range": "0.20..0.62",
+      "intent": "The event rate feels overfed, like the machine is swallowing inputs."
+    },
+    {
+      "name": "overheat",
+      "range": "0.62..1.00",
+      "intent": "Buzz and glitch colors smear into a final cabinet collapse."
+    }
+  ],
+  "example_command": "cargo run -- piece --output out/arcade-collapse.wav --scene arcade-collapse --random-preset feral --seed 43003"
+}

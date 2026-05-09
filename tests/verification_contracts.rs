@@ -33,6 +33,15 @@ fn run_ok(args: &[&str]) {
     );
 }
 
+fn manifest_entry_seeds(manifest: &Value) -> Vec<u64> {
+    manifest["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .map(|entry| entry["seed"].as_u64().expect("entry seed"))
+        .collect()
+}
+
 #[test]
 fn render_is_reproducible_with_same_seed_and_randomness_controls() {
     let dir = temp_dir("render_repro");
@@ -101,6 +110,247 @@ fn render_is_reproducible_with_same_seed_and_randomness_controls() {
     let a_bytes = fs::read(&a).expect("read a");
     let b_bytes = fs::read(&b).expect("read b");
     assert_eq!(a_bytes, b_bytes, "same seed/settings should be byte-stable");
+}
+
+#[test]
+fn render_random_presets_are_deterministic_and_distinct() {
+    let dir = temp_dir("render_random_presets");
+    let stable_a = dir.join("stable_a.wav");
+    let stable_b = dir.join("stable_b.wav");
+    let feral = dir.join("feral.wav");
+
+    let common = [
+        "render",
+        "--duration",
+        "0.12",
+        "--sample-rate",
+        "22050",
+        "--style",
+        "glitch",
+        "--seed",
+        "5150",
+    ];
+
+    let mut stable_a_args: Vec<&str> = common.into();
+    stable_a_args.extend([
+        "--random-preset",
+        "stable",
+        "--output",
+        stable_a.to_str().expect("stable a path"),
+    ]);
+    run_ok(&stable_a_args);
+
+    let common = [
+        "render",
+        "--duration",
+        "0.12",
+        "--sample-rate",
+        "22050",
+        "--style",
+        "glitch",
+        "--seed",
+        "5150",
+    ];
+    let mut stable_b_args: Vec<&str> = common.into();
+    stable_b_args.extend([
+        "--random-preset",
+        "stable",
+        "--output",
+        stable_b.to_str().expect("stable b path"),
+    ]);
+    run_ok(&stable_b_args);
+
+    let common = [
+        "render",
+        "--duration",
+        "0.12",
+        "--sample-rate",
+        "22050",
+        "--style",
+        "glitch",
+        "--seed",
+        "5150",
+    ];
+    let mut feral_args: Vec<&str> = common.into();
+    feral_args.extend([
+        "--random-preset",
+        "feral",
+        "--output",
+        feral.to_str().expect("feral path"),
+    ]);
+    run_ok(&feral_args);
+
+    let stable_a_bytes = fs::read(&stable_a).expect("read stable a");
+    let stable_b_bytes = fs::read(&stable_b).expect("read stable b");
+    let feral_bytes = fs::read(&feral).expect("read feral");
+
+    assert_eq!(
+        stable_a_bytes, stable_b_bytes,
+        "same named preset and seed should be byte-stable"
+    );
+    assert_ne!(
+        stable_a_bytes, feral_bytes,
+        "different named randomness presets should resolve to distinct render settings"
+    );
+}
+
+#[test]
+fn piece_manifest_records_reproducible_event_seed_plan() {
+    let dir = temp_dir("piece_manifest");
+    let wav = dir.join("piece.wav");
+    let manifest_path = dir.join("piece_manifest.json");
+
+    run_ok(&[
+        "piece",
+        "--output",
+        wav.to_str().expect("wav path"),
+        "--manifest",
+        manifest_path.to_str().expect("manifest path"),
+        "--duration",
+        "0.3",
+        "--sample-rate",
+        "22050",
+        "--styles",
+        "glitch,punish",
+        "--events-per-second",
+        "8",
+        "--min-event-duration",
+        "0.02",
+        "--max-event-duration",
+        "0.05",
+        "--seed",
+        "2024",
+        "--seed-rerolls",
+        "1",
+        "--layer-rerolls",
+        "2",
+    ]);
+
+    let manifest: Value =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).expect("manifest read"))
+            .expect("piece manifest json");
+
+    assert!(
+        manifest["base_seed"].is_u64() || manifest["seed"].is_u64(),
+        "manifest should record the effective base seed: {manifest:#}"
+    );
+    assert!(
+        manifest["events"].as_array().is_some(),
+        "manifest should include event-level reproduction data: {manifest:#}"
+    );
+    let events = manifest["events"].as_array().expect("events");
+    assert!(!events.is_empty(), "piece manifest should include events");
+    for event in events {
+        assert!(
+            event["seed"].is_u64(),
+            "event should record seed: {event:#}"
+        );
+        assert!(
+            event["style"].is_string(),
+            "event should record style: {event:#}"
+        );
+        assert!(
+            event["start_s"].is_number() || event["start_frame"].is_u64(),
+            "event should record placement timing: {event:#}"
+        );
+    }
+}
+
+#[test]
+fn marathon_seed_rerolls_are_deterministic_and_change_seed_plan() {
+    let dir = temp_dir("marathon_rerolls");
+    let first = dir.join("first");
+    let second = dir.join("second");
+    let baseline = dir.join("baseline");
+
+    let common = [
+        "--count",
+        "3",
+        "--min-duration",
+        "0.05",
+        "--max-duration",
+        "0.05",
+        "--sample-rate",
+        "22050",
+        "--styles",
+        "glitch,punish",
+        "--seed",
+        "777",
+        "--seed-offset",
+        "5",
+        "--seed-salt",
+        "3",
+        "--seed-rerolls",
+        "2",
+    ];
+
+    let mut first_args = vec!["marathon", "--out-dir", first.to_str().expect("first dir")];
+    first_args.extend(common);
+    run_ok(&first_args);
+
+    let mut second_args = vec![
+        "marathon",
+        "--out-dir",
+        second.to_str().expect("second dir"),
+    ];
+    second_args.extend(common);
+    run_ok(&second_args);
+
+    let baseline_args = vec![
+        "marathon",
+        "--out-dir",
+        baseline.to_str().expect("baseline dir"),
+        "--count",
+        "3",
+        "--min-duration",
+        "0.05",
+        "--max-duration",
+        "0.05",
+        "--sample-rate",
+        "22050",
+        "--styles",
+        "glitch,punish",
+        "--seed",
+        "777",
+        "--seed-offset",
+        "5",
+        "--seed-salt",
+        "3",
+        "--seed-rerolls",
+        "0",
+    ];
+    run_ok(&baseline_args);
+
+    let first_manifest: Value =
+        serde_json::from_str(&fs::read_to_string(first.join("manifest.json")).expect("first read"))
+            .expect("first manifest");
+    let second_manifest: Value = serde_json::from_str(
+        &fs::read_to_string(second.join("manifest.json")).expect("second read"),
+    )
+    .expect("second manifest");
+    let baseline_manifest: Value = serde_json::from_str(
+        &fs::read_to_string(baseline.join("manifest.json")).expect("baseline read"),
+    )
+    .expect("baseline manifest");
+
+    assert_eq!(
+        first_manifest["base_seed"], second_manifest["base_seed"],
+        "same seed reroll controls should produce the same manifest base seed"
+    );
+    assert_eq!(
+        manifest_entry_seeds(&first_manifest),
+        manifest_entry_seeds(&second_manifest),
+        "same seed reroll controls should produce the same entry seed plan"
+    );
+    assert_ne!(
+        first_manifest["base_seed"], baseline_manifest["base_seed"],
+        "changing seed-rerolls should change the derived base seed"
+    );
+    assert_ne!(
+        manifest_entry_seeds(&first_manifest),
+        manifest_entry_seeds(&baseline_manifest),
+        "changing seed-rerolls should change the entry seed plan"
+    );
 }
 
 #[test]

@@ -1,4 +1,173 @@
 use super::*;
+use std::io::{self, IsTerminal, Write};
+use std::time::Instant;
+
+struct ColoredProgressBar {
+    enabled: bool,
+    total: usize,
+    width: usize,
+    start: Instant,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PieceManifest {
+    generated_unix_s: u64,
+    output: String,
+    duration_s: f64,
+    sample_rate_hz: u32,
+    channels: u16,
+    layout: Option<String>,
+    region: String,
+    scene: Option<String>,
+    event_count: usize,
+    events: Vec<PieceEventPlan>,
+    base_seed: u64,
+    seed_rerolls: u32,
+    layer_rerolls: u32,
+    styles: Vec<String>,
+    events_per_second: f64,
+    min_event_duration_s: f64,
+    max_event_duration_s: f64,
+    min_pan_width: f64,
+    max_pan_width: f64,
+    output_encoding: String,
+    backend_requested: String,
+    backend_active: String,
+    jobs: usize,
+}
+
+fn piece_scene_name(scene: PieceSceneArg) -> &'static str {
+    match scene {
+        PieceSceneArg::DroneField => "drone-field",
+        PieceSceneArg::FailureChamber => "failure-chamber",
+        PieceSceneArg::ArcadeCollapse => "arcade-collapse",
+        PieceSceneArg::AlarmChoir => "alarm-choir",
+    }
+}
+
+fn apply_piece_scene(scene: Option<PieceSceneArg>, opts: &mut PieceOptions) {
+    let Some(scene) = scene else {
+        return;
+    };
+    let default_style_count = available_styles().len();
+    let styles_were_default = opts.styles.len() == default_style_count;
+    match scene {
+        PieceSceneArg::DroneField => {
+            opts.layout = Some(SurroundLayout::SevenOneFour);
+            opts.channels = SurroundLayout::SevenOneFour.channels();
+            opts.region = PieceSpatialRegion::High;
+            opts.events_per_second = opts.events_per_second.max(2.4);
+            opts.min_event_duration = opts.min_event_duration.max(0.18);
+            opts.max_event_duration = opts.max_event_duration.max(1.6);
+            opts.min_pan_width = opts.min_pan_width.max(0.8);
+            opts.max_pan_width = opts.max_pan_width.max(2.4);
+            if styles_were_default {
+                opts.styles = vec![Style::Hum, Style::Rub, Style::Buzz, Style::Meltdown];
+            }
+        }
+        PieceSceneArg::FailureChamber => {
+            opts.layout = Some(SurroundLayout::FiveOneTwo);
+            opts.channels = SurroundLayout::FiveOneTwo.channels();
+            opts.region = PieceSpatialRegion::Full;
+            opts.events_per_second = opts.events_per_second.max(8.5);
+            opts.min_event_duration = opts.min_event_duration.min(0.025);
+            opts.max_event_duration = opts
+                .max_event_duration
+                .min(0.34)
+                .max(opts.min_event_duration);
+            opts.min_pan_width = opts.min_pan_width.min(0.25);
+            opts.max_pan_width = opts.max_pan_width.min(1.15).max(opts.min_pan_width);
+            if styles_were_default {
+                opts.styles = vec![
+                    Style::Glitch,
+                    Style::Punish,
+                    Style::Distort,
+                    Style::Catastrophic,
+                ];
+            }
+        }
+        PieceSceneArg::ArcadeCollapse => {
+            opts.layout = Some(SurroundLayout::Quad);
+            opts.channels = SurroundLayout::Quad.channels();
+            opts.region = PieceSpatialRegion::Ring;
+            opts.events_per_second = opts.events_per_second.max(12.0);
+            opts.min_event_duration = opts.min_event_duration.min(0.015);
+            opts.max_event_duration = opts
+                .max_event_duration
+                .min(0.16)
+                .max(opts.min_event_duration);
+            opts.min_pan_width = opts.min_pan_width.max(0.45);
+            opts.max_pan_width = opts.max_pan_width.max(1.8);
+            if styles_were_default {
+                opts.styles = vec![
+                    Style::Digital,
+                    Style::Buzz,
+                    Style::Pop,
+                    Style::Glitch,
+                    Style::Spank,
+                ];
+            }
+        }
+        PieceSceneArg::AlarmChoir => {
+            opts.layout = Some(SurroundLayout::NineOneSix);
+            opts.channels = SurroundLayout::NineOneSix.channels();
+            opts.region = PieceSpatialRegion::High;
+            opts.events_per_second = opts.events_per_second.max(6.8);
+            opts.min_event_duration = opts.min_event_duration.max(0.08);
+            opts.max_event_duration = opts.max_event_duration.max(0.9);
+            opts.min_pan_width = opts.min_pan_width.max(1.0);
+            opts.max_pan_width = opts.max_pan_width.max(3.0);
+            if styles_were_default {
+                opts.styles = vec![
+                    Style::Harsh,
+                    Style::Hum,
+                    Style::Rub,
+                    Style::Punish,
+                    Style::Catastrophic,
+                ];
+            }
+        }
+    }
+}
+
+impl ColoredProgressBar {
+    fn new(total: usize) -> Self {
+        Self {
+            enabled: io::stderr().is_terminal(),
+            total: total.max(1),
+            width: 32,
+            start: Instant::now(),
+        }
+    }
+
+    fn tick(&self, done: usize, style: Style) {
+        if !self.enabled {
+            return;
+        }
+        let done = done.min(self.total);
+        let filled = (done * self.width) / self.total;
+        let empty = self.width.saturating_sub(filled);
+        let elapsed = self.start.elapsed().as_secs_f64();
+        let pct = (done as f64 / self.total as f64) * 100.0;
+        let bar = format!(
+            "\x1b[1;35m[\x1b[1;36m{}\x1b[2;37m{}\x1b[1;35m]\x1b[0m",
+            "█".repeat(filled),
+            "░".repeat(empty)
+        );
+        eprint!(
+            "\r\x1b[1;33mSynthesizing piece\x1b[0m {} \x1b[1;32m{:>5.1}%\x1b[0m  {:>4}/{:<4}  style=\x1b[1;31m{}\x1b[0m  \x1b[2;37m{:>5.1}s\x1b[0m",
+            bar, pct, done, self.total, style, elapsed
+        );
+        let _ = io::stderr().flush();
+    }
+
+    fn finish(&self) {
+        if !self.enabled {
+            return;
+        }
+        eprintln!();
+    }
+}
 
 pub(super) fn render(args: RenderArgs) -> Result<()> {
     let randomness = RandomnessControls::from(&args.randomness);
@@ -56,12 +225,14 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         args.gpu_crush_mix,
     );
     let styles = selected_pack_styles(&args.styles);
-    let options = PieceOptions {
+    let mut options = PieceOptions {
         duration: randomize_duration(args.duration, randomness, base_seed),
         sample_rate: args.sample_rate,
         seed: Some(base_seed),
         styles,
         layout,
+        region: args.region.into(),
+        layer_rerolls: args.layer_rerolls,
         channels: layout.map(|l| l.channels()).unwrap_or(args.channels),
         gain: randomize_gain(
             args.gain,
@@ -106,11 +277,12 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         max_pan_width: (args.max_pan_width
             * symmetric_factor(
                 derived_seed_label(base_seed, 0xA11C_E007),
-                randomness_amount(randomness.randomness, randomness.spectral_randomness),
+                randomness_amount(randomness.randomness, randomness.spatial_randomness),
                 0.5,
             ))
         .clamp(0.05, 64.0),
     };
+    apply_piece_scene(args.scene, &mut options);
     let options = PieceOptions {
         min_event_duration: options.min_event_duration.min(options.duration),
         max_event_duration: options
@@ -120,8 +292,19 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         max_pan_width: options.max_pan_width.max(options.min_pan_width),
         ..options
     };
-    let summary = render_piece_to_wav_with_engine(&args.output, &options, &engine)
-        .with_context(|| format!("failed to write {}", args.output.display()))?;
+    let total_events = (options.duration * options.events_per_second)
+        .round()
+        .max(1.0) as usize;
+    let progress = ColoredProgressBar::new(total_events);
+    let summary_result = render_piece_to_wav_with_engine_progress(
+        &args.output,
+        &options,
+        &engine,
+        |done, _total, style| progress.tick(done, style),
+    );
+    progress.finish();
+    let summary =
+        summary_result.with_context(|| format!("failed to write {}", args.output.display()))?;
 
     println!(
         "Rendered piece {} ({} frames @ {} Hz, channels={}, layout={}, events={}, seed={}, format={}, backend={} -> {}, jobs={})",
@@ -137,6 +320,40 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         summary.backend_active,
         summary.jobs
     );
+    if let Some(path) = args.manifest.as_ref() {
+        let manifest = PieceManifest {
+            generated_unix_s: now_unix_s(),
+            output: summary.output.display().to_string(),
+            duration_s: options.duration,
+            sample_rate_hz: summary.sample_rate,
+            channels: summary.channels,
+            layout: summary.layout.clone(),
+            region: summary.region.clone(),
+            scene: args.scene.map(piece_scene_name).map(str::to_string),
+            event_count: summary.events,
+            events: summary.event_plan.clone(),
+            base_seed,
+            seed_rerolls: randomness.seed_rerolls,
+            layer_rerolls: options.layer_rerolls,
+            styles: options
+                .styles
+                .iter()
+                .map(|style| style.as_str().to_string())
+                .collect(),
+            events_per_second: options.events_per_second,
+            min_event_duration_s: options.min_event_duration,
+            max_event_duration_s: options.max_event_duration,
+            min_pan_width: options.min_pan_width,
+            max_pan_width: options.max_pan_width,
+            output_encoding: summary.output_encoding.as_str().to_string(),
+            backend_requested: summary.backend_requested.as_str().to_string(),
+            backend_active: summary.backend_active.as_str().to_string(),
+            jobs: summary.jobs,
+        };
+        write_json(path, &manifest)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+        println!("Manifest: {}", path.display());
+    }
     Ok(())
 }
 
@@ -162,11 +379,15 @@ pub(super) fn speech(args: SpeechArgs) -> Result<()> {
             .clone()
             .unwrap_or_else(|| "HELLO FROM UGLY SOUND GENERATOR".to_string())
     };
+    let mut speech_seed = apply_seed_controls(args.seed, randomness);
+    for idx in 0..args.unit_rerolls {
+        speech_seed = derived_seed_label(speech_seed, 0x5EED_C000 ^ idx as u64);
+    }
     let opts = SpeechRenderOptions {
         text,
         input_mode: args.input_mode.into(),
         sample_rate: args.sample_rate,
-        seed: Some(apply_seed_controls(args.seed, randomness)),
+        seed: Some(speech_seed),
         normalize_text: !args.no_normalize_text,
         chip_profile: args.profile.into(),
         primary_osc: args.primary_osc.into(),
@@ -731,7 +952,10 @@ pub(super) fn go(args: GoArgs) -> Result<()> {
         .output
         .unwrap_or_else(|| default_go_output_path(&args.input));
     let flavor = args.flavor.map(Into::into);
-    let seed = apply_seed_controls(args.seed, randomness);
+    let mut seed = apply_seed_controls(args.seed, randomness);
+    for idx in 0..args.contour_rerolls {
+        seed = derived_seed_label(seed, 0xC07E_9000 ^ idx as u64);
+    }
     let target_colbys = randomize_go_colbys(args.level, randomness, seed);
     let normalize_dbfs = randomize_normalize_dbfs(args.normalize_dbfs, randomness, seed);
 
@@ -817,7 +1041,10 @@ pub(super) fn chain(args: ChainArgs) -> Result<()> {
         args.gpu_crush_bits,
         args.gpu_crush_mix,
     );
-    let base_seed = apply_seed_controls(args.seed, randomness);
+    let mut base_seed = apply_seed_controls(args.seed, randomness);
+    for idx in 0..args.stage_rerolls {
+        base_seed = derived_seed_label(base_seed, 0x57A6_E000 ^ idx as u64);
+    }
     let mut stage_tokens = Vec::new();
     if let Some(preset_name) = args.preset.as_ref() {
         let preset = load_chain_preset(preset_name)?;
@@ -974,10 +1201,14 @@ pub(super) fn presets(args: PresetsArgs) -> Result<()> {
                 let contour: UglinessContour = serde_json::from_str(&text)
                     .with_context(|| format!("invalid contour JSON in {}", path.display()))?;
                 println!("{}", serde_json::to_string_pretty(&contour)?);
-            } else {
+            } else if info.kind == "chain" {
                 let preset: ChainPreset = serde_json::from_str(&text)
                     .with_context(|| format!("invalid chain preset JSON in {}", path.display()))?;
                 println!("{}", serde_json::to_string_pretty(&preset)?);
+            } else {
+                let value: serde_json::Value = serde_json::from_str(&text)
+                    .with_context(|| format!("invalid preset JSON in {}", path.display()))?;
+                println!("{}", serde_json::to_string_pretty(&value)?);
             }
             return Ok(());
         }

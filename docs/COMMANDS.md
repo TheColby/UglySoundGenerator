@@ -62,6 +62,65 @@ Key options:
 
 When `--layout` is provided, it sets the channel count automatically and uses named speaker positions, including Atmos-style height layouts.
 
+#### Named Randomness Recipes
+
+Most generative commands accept the same low-level randomness controls:
+
+- `--randomness`
+- `--timing-randomness`
+- `--spectral-randomness`
+- `--amplitude-randomness`
+- `--density-randomness`
+- `--spatial-randomness`
+- `--articulation-randomness`
+- `--seed-offset`
+- `--seed-salt`
+- `--seed-rerolls`
+
+The repo includes recipe presets in `presets/randomness/`, and the shared CLI surface can apply them directly with `--random-preset <stable|restless|feral|catastrophic>`.
+
+| Preset | Intent | Equivalent flags |
+| --- | --- | --- |
+| `stable` | light deterministic drift | `--random-preset stable` |
+| `restless` | active variation without full collapse | `--random-preset restless` |
+| `feral` | aggressive timing, color, level, and density movement | `--random-preset feral` |
+| `catastrophic` | maximum practical instability | `--random-preset catastrophic` |
+
+Example:
+
+```bash
+cargo run -- piece \
+  --output out/restless-piece.wav \
+  --duration 35 \
+  --layout 5.1.2 \
+  --styles glitch,punish,catastrophic \
+  --events-per-second 8 \
+  --random-preset restless \
+  --seed 42002
+```
+
+#### Piece Scene Recipes
+
+Reusable piece-scene recipes live in `presets/piece_scenes/`, and `usg piece` can apply the same built-in scenes directly with `--scene`.
+
+| Scene | Best for | Layout | Randomness |
+| --- | --- | --- | --- |
+| `drone-field` | slow wide spatial smear | `7.1.4` | `stable` |
+| `failure-chamber` | dense midrange faults in a small room | `5.1.2` | `restless` |
+| `arcade-collapse` | fast cabinet-noise montage | `quad` | `feral` |
+| `alarm-choir` | large siren-like spatial chorus | `9.1.6` | `catastrophic` |
+
+Example using the `arcade-collapse` scene:
+
+```bash
+cargo run -- piece \
+  --output out/arcade-collapse.wav \
+  --scene arcade-collapse \
+  --random-preset feral \
+  --manifest out/arcade-collapse.manifest.json \
+  --seed 43003
+```
+
 ### `usg chain`
 
 Build multi-stage synthesis/effect pipelines.
@@ -144,12 +203,17 @@ cargo run -- go out/input.wav \
 
 ### `usg presets`
 
-List built-in contour presets and inspect one.
+List built-in contour, chain, randomness, and piece-scene presets and inspect one.
 
 ```bash
 cargo run -- presets
 cargo run -- presets --show 01_linear_curve_01
+cargo run -- presets --kind chain --show ps1_grit
+cargo run -- presets --kind randomness --show feral
+cargo run -- presets --kind piece-scene --show arcade-collapse --json
 ```
+
+Current CLI preset discovery covers built-in `go` contours, `chain` stage presets, named randomness profiles, and reusable `piece` scene recipes.
 
 ### `usg backends`
 

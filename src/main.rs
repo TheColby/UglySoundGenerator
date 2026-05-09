@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -13,15 +13,15 @@ use serde::{Deserialize, Serialize};
 use usg::{
     AnalysisReport, AnalyzeModel, AnalyzeOptions, COLBYS_MAX, COLBYS_MIN, ChainStage, CoordSystem,
     DEFAULT_GPU_CRUSH_BITS, DEFAULT_GPU_CRUSH_MIX, DEFAULT_GPU_DRIVE, GoFlavor, OutputEncoding,
-    PieceOptions, RenderBackend, RenderEngine, RenderOptions, SpatialGoOptions, SpeechChipProfile,
-    SpeechInputMode, SpeechIntelligibility, SpeechOscillator, SpeechRenderOptions, Style,
-    SurroundLayout, TimelineOptions, Trajectory, UglinessContour, analyze_wav_timeline,
-    analyze_wav_with_options, available_effects, available_styles, backend_capabilities,
-    backend_status_report, default_jobs, go_ugly_file_with_engine_contour_encoding,
-    go_ugly_upmix_file_with_engine_contour_encoding, parse_chain_stage, point_to_xyz,
-    render_chain_to_wav_with_engine, render_piece_to_wav_with_engine,
-    render_speech_with_artifacts_to_wav_with_engine, render_to_wav_with_engine,
-    resolve_backend_plan, score_speech_intelligibility,
+    PieceEventPlan, PieceOptions, PieceSpatialRegion, RenderBackend, RenderEngine, RenderOptions,
+    SpatialGoOptions, SpeechChipProfile, SpeechInputMode, SpeechIntelligibility, SpeechOscillator,
+    SpeechRenderOptions, Style, SurroundLayout, TimelineOptions, Trajectory, UglinessContour,
+    analyze_wav_timeline, analyze_wav_with_options, available_effects, available_styles,
+    backend_capabilities, backend_status_report, default_jobs,
+    go_ugly_file_with_engine_contour_encoding, go_ugly_upmix_file_with_engine_contour_encoding,
+    parse_chain_stage, point_to_xyz, render_chain_to_wav_with_engine,
+    render_piece_to_wav_with_engine_progress, render_speech_with_artifacts_to_wav_with_engine,
+    render_to_wav_with_engine, resolve_backend_plan, score_speech_intelligibility,
 };
 
 mod cli_core_commands;
@@ -172,6 +172,14 @@ struct PieceArgs {
     #[arg(long, value_enum, value_delimiter = ',', num_args = 1..)]
     styles: Vec<StyleArg>,
 
+    /// Reusable composition scene preset.
+    #[arg(long, value_enum)]
+    scene: Option<PieceSceneArg>,
+
+    /// Spatial region to favor when placing events.
+    #[arg(long, value_enum, default_value_t = PieceRegionArg::Full)]
+    region: PieceRegionArg,
+
     /// Average number of short ugly events per second.
     #[arg(long, default_value_t = 5.0)]
     events_per_second: f64,
@@ -191,6 +199,14 @@ struct PieceArgs {
     /// Maximum spatial spread across channels.
     #[arg(long, default_value_t = 1.75)]
     max_pan_width: f64,
+
+    /// Re-roll extra piece layers without changing the base seed.
+    #[arg(long, default_value_t = 0)]
+    layer_rerolls: u32,
+
+    /// Optional JSON manifest for reproducing this piece.
+    #[arg(long)]
+    manifest: Option<PathBuf>,
 
     /// Base output gain (0.0..1.0).
     #[arg(long, default_value_t = 0.7)]
@@ -276,6 +292,10 @@ struct SpeechArgs {
     /// Optional seed for repeatable speech.
     #[arg(long)]
     seed: Option<u64>,
+
+    /// Re-roll speech unit seeds without changing the base seed.
+    #[arg(long, default_value_t = 0)]
+    unit_rerolls: u32,
 
     /// Units per second (characters/words/sentences depending on input mode).
     #[arg(long, default_value_t = 11.0)]
@@ -663,6 +683,9 @@ struct MutateArgs {
     /// Parallel worker count (0 = auto).
     #[arg(long, default_value_t = 0)]
     jobs: usize,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -763,6 +786,9 @@ struct EvolveArgs {
 
     #[command(flatten)]
     output_format: OutputFormatArgs,
+
+    #[command(flatten)]
+    randomness: RandomnessArgs,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -810,6 +836,10 @@ struct GoArgs {
     /// Optional seed for deterministic uglification.
     #[arg(long)]
     seed: Option<u64>,
+
+    /// Re-roll contour processing without changing the visible base seed.
+    #[arg(long, default_value_t = 0)]
+    contour_rerolls: u32,
 
     /// Ugliness contour JSON file (time-varying level envelope).
     /// Format: {"interpolation":"linear","points":[{"t":0.0,"level":200},{"t":1.0,"level":900}]}
@@ -975,6 +1005,10 @@ struct ChainArgs {
     /// Optional seed for repeatable chain output.
     #[arg(long)]
     seed: Option<u64>,
+
+    /// Re-roll stage seeds without changing the visible base seed.
+    #[arg(long, default_value_t = 0)]
+    stage_rerolls: u32,
 
     /// Final output gain (0.0..1.0).
     #[arg(long, default_value_t = 0.8)]
@@ -1183,6 +1217,10 @@ struct MarathonArgs {
 
 #[derive(Debug, Clone, Args)]
 struct RandomnessArgs {
+    /// Named randomness preset.
+    #[arg(long = "random-preset", value_enum)]
+    random_preset: Option<RandomnessPresetArg>,
+
     /// Add a deterministic offset to the chosen seed before rendering.
     #[arg(long, default_value_t = 0)]
     seed_offset: u64,
@@ -1214,6 +1252,42 @@ struct RandomnessArgs {
     /// How much randomized density/probability variation to apply.
     #[arg(long, default_value_t = 1.0)]
     density_randomness: f64,
+
+    /// How much randomized spatial placement/motion variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    spatial_randomness: f64,
+
+    /// How much randomized articulation/unit-shaping variation to apply.
+    #[arg(long, default_value_t = 1.0)]
+    articulation_randomness: f64,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RandomnessPresetArg {
+    Stable,
+    Restless,
+    Feral,
+    Catastrophic,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum PieceSceneArg {
+    DroneField,
+    FailureChamber,
+    ArcadeCollapse,
+    AlarmChoir,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, Serialize)]
+enum PieceRegionArg {
+    Full,
+    Front,
+    Rear,
+    High,
+    Low,
+    Left,
+    Right,
+    Ring,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -1344,6 +1418,8 @@ enum PresetKindArg {
     All,
     Contour,
     Chain,
+    Randomness,
+    PieceScene,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -1470,6 +1546,21 @@ impl From<GoFlavorArg> for GoFlavor {
     }
 }
 
+impl From<PieceRegionArg> for PieceSpatialRegion {
+    fn from(value: PieceRegionArg) -> Self {
+        match value {
+            PieceRegionArg::Full => PieceSpatialRegion::Full,
+            PieceRegionArg::Front => PieceSpatialRegion::Front,
+            PieceRegionArg::Rear => PieceSpatialRegion::Rear,
+            PieceRegionArg::High => PieceSpatialRegion::High,
+            PieceRegionArg::Low => PieceSpatialRegion::Low,
+            PieceRegionArg::Left => PieceSpatialRegion::Left,
+            PieceRegionArg::Right => PieceSpatialRegion::Right,
+            PieceRegionArg::Ring => PieceSpatialRegion::Ring,
+        }
+    }
+}
+
 impl From<CoordSystemArg> for CoordSystem {
     fn from(value: CoordSystemArg) -> Self {
         match value {
@@ -1542,6 +1633,7 @@ struct MutateSummary {
 }
 
 fn mutate(args: MutateArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let engine = engine_from_args(args.backend, args.jobs, None, None, None);
     let plan = resolve_backend_plan(&engine)?;
@@ -1559,7 +1651,7 @@ fn mutate(args: MutateArgs) -> Result<()> {
         .with_context(|| format!("failed to analyze input {}", args.input.display()))?;
     let base_ugly = base_analysis.colbys;
 
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let level_range = (args.level_max.max(args.level_min + 1) - args.level_min) as u64;
     let level_min_co = args.level_min.clamp(-1000, 1000);
 
@@ -1601,7 +1693,7 @@ fn mutate(args: MutateArgs) -> Result<()> {
                     Some(flavor),
                     Some(seed),
                     true,
-                    args.normalize_dbfs,
+                    randomize_normalize_dbfs(args.normalize_dbfs, randomness, seed),
                     None,
                     None,
                     output_encoding,
@@ -1814,6 +1906,7 @@ struct EvolveLineage {
 }
 
 fn evolve(args: EvolveArgs) -> Result<()> {
+    let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let engine = engine_from_args(args.backend, args.jobs, None, None, None);
     let plan = resolve_backend_plan(&engine)?;
@@ -1827,7 +1920,7 @@ fn evolve(args: EvolveArgs) -> Result<()> {
     fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("failed to create {}", args.out_dir.display()))?;
 
-    let base_seed = args.seed.unwrap_or_else(seed_from_time);
+    let base_seed = apply_seed_controls(args.seed, randomness);
     let styles: Vec<Style> = if let Some(s) = args.style {
         vec![s.into()]
     } else {
@@ -1870,11 +1963,11 @@ fn evolve(args: EvolveArgs) -> Result<()> {
                         seed % 99999
                     ));
                     let render_opts = RenderOptions {
-                        duration: args.duration,
+                        duration: randomize_duration(args.duration, randomness, *seed),
                         sample_rate: args.sample_rate,
                         seed: Some(*seed),
                         style: *style,
-                        gain: args.gain,
+                        gain: randomize_gain(args.gain, randomness, *seed),
                         normalize: true,
                         normalize_dbfs: -0.3,
                         output_encoding,
@@ -2146,20 +2239,125 @@ struct RandomnessControls {
     spectral_randomness: f64,
     amplitude_randomness: f64,
     density_randomness: f64,
+    spatial_randomness: f64,
+    articulation_randomness: f64,
 }
 
 impl From<&RandomnessArgs> for RandomnessControls {
     fn from(value: &RandomnessArgs) -> Self {
+        let preset = value.random_preset.map(randomness_preset_controls);
+        let default_seed_rerolls = preset.map(|p| p.seed_rerolls).unwrap_or(0);
+        let default_randomness = preset.map(|p| p.randomness).unwrap_or(0.0);
+        let default_timing = preset.map(|p| p.timing_randomness).unwrap_or(1.0);
+        let default_spectral = preset.map(|p| p.spectral_randomness).unwrap_or(1.0);
+        let default_amplitude = preset.map(|p| p.amplitude_randomness).unwrap_or(1.0);
+        let default_density = preset.map(|p| p.density_randomness).unwrap_or(1.0);
+        let default_spatial = preset.map(|p| p.spatial_randomness).unwrap_or(1.0);
+        let default_articulation = preset.map(|p| p.articulation_randomness).unwrap_or(1.0);
         Self {
             seed_offset: value.seed_offset,
             seed_salt: value.seed_salt,
-            seed_rerolls: value.seed_rerolls,
-            randomness: value.randomness.max(0.0),
-            timing_randomness: value.timing_randomness.max(0.0),
-            spectral_randomness: value.spectral_randomness.max(0.0),
-            amplitude_randomness: value.amplitude_randomness.max(0.0),
-            density_randomness: value.density_randomness.max(0.0),
+            seed_rerolls: if value.seed_rerolls == 0 {
+                default_seed_rerolls
+            } else {
+                value.seed_rerolls
+            },
+            randomness: if value.randomness == 0.0 {
+                default_randomness
+            } else {
+                value.randomness
+            }
+            .max(0.0),
+            timing_randomness: if value.timing_randomness == 1.0 {
+                default_timing
+            } else {
+                value.timing_randomness
+            }
+            .max(0.0),
+            spectral_randomness: if value.spectral_randomness == 1.0 {
+                default_spectral
+            } else {
+                value.spectral_randomness
+            }
+            .max(0.0),
+            amplitude_randomness: if value.amplitude_randomness == 1.0 {
+                default_amplitude
+            } else {
+                value.amplitude_randomness
+            }
+            .max(0.0),
+            density_randomness: if value.density_randomness == 1.0 {
+                default_density
+            } else {
+                value.density_randomness
+            }
+            .max(0.0),
+            spatial_randomness: if value.spatial_randomness == 1.0 {
+                default_spatial
+            } else {
+                value.spatial_randomness
+            }
+            .max(0.0),
+            articulation_randomness: if value.articulation_randomness == 1.0 {
+                default_articulation
+            } else {
+                value.articulation_randomness
+            }
+            .max(0.0),
         }
+    }
+}
+
+fn randomness_preset_controls(preset: RandomnessPresetArg) -> RandomnessControls {
+    match preset {
+        RandomnessPresetArg::Stable => RandomnessControls {
+            seed_offset: 0,
+            seed_salt: 0,
+            seed_rerolls: 0,
+            randomness: 0.12,
+            timing_randomness: 0.35,
+            spectral_randomness: 0.25,
+            amplitude_randomness: 0.2,
+            density_randomness: 0.25,
+            spatial_randomness: 0.2,
+            articulation_randomness: 0.25,
+        },
+        RandomnessPresetArg::Restless => RandomnessControls {
+            seed_offset: 0,
+            seed_salt: 0,
+            seed_rerolls: 1,
+            randomness: 0.38,
+            timing_randomness: 0.8,
+            spectral_randomness: 0.65,
+            amplitude_randomness: 0.55,
+            density_randomness: 0.85,
+            spatial_randomness: 0.8,
+            articulation_randomness: 0.75,
+        },
+        RandomnessPresetArg::Feral => RandomnessControls {
+            seed_offset: 0,
+            seed_salt: 0,
+            seed_rerolls: 2,
+            randomness: 0.7,
+            timing_randomness: 1.15,
+            spectral_randomness: 1.1,
+            amplitude_randomness: 0.95,
+            density_randomness: 1.2,
+            spatial_randomness: 1.1,
+            articulation_randomness: 1.05,
+        },
+        RandomnessPresetArg::Catastrophic => RandomnessControls {
+            seed_offset: 0,
+            seed_salt: 0,
+            seed_rerolls: 4,
+            randomness: 1.0,
+            timing_randomness: 1.45,
+            spectral_randomness: 1.4,
+            amplitude_randomness: 1.25,
+            density_randomness: 1.55,
+            spatial_randomness: 1.45,
+            articulation_randomness: 1.35,
+        },
     }
 }
 
@@ -2274,8 +2472,13 @@ fn randomize_speech_options(
     opts.pitch_hz = (opts.pitch_hz
         * symmetric_factor(derived_seed_label(seed, 0x5202), spectral, 0.35))
     .clamp(20.0, 2400.0);
+    let articulation = randomness_amount(randomness.randomness, randomness.articulation_randomness);
     opts.pitch_jitter = (opts.pitch_jitter
-        + symmetric_add(derived_seed_label(seed, 0x5203), timing, 0.18))
+        + symmetric_add(
+            derived_seed_label(seed, 0x5203),
+            timing.max(articulation),
+            0.18,
+        ))
     .clamp(0.0, 1.0);
     opts.vibrato_hz = (opts.vibrato_hz
         * symmetric_factor(derived_seed_label(seed, 0x5204), timing, 0.4))
@@ -2306,16 +2509,32 @@ fn randomize_speech_options(
     opts.glide =
         (opts.glide + symmetric_add(derived_seed_label(seed, 0x5214), timing, 0.2)).clamp(0.0, 1.5);
     opts.emphasis = (opts.emphasis
-        + symmetric_add(derived_seed_label(seed, 0x5215), amplitude, 0.35))
+        + symmetric_add(
+            derived_seed_label(seed, 0x5215),
+            amplitude.max(articulation),
+            0.35,
+        ))
     .clamp(0.0, 2.0);
     opts.word_accent = (opts.word_accent
-        + symmetric_add(derived_seed_label(seed, 0x5216), timing, 0.25))
+        + symmetric_add(
+            derived_seed_label(seed, 0x5216),
+            timing.max(articulation),
+            0.25,
+        ))
     .clamp(0.0, 1.0);
     opts.sentence_lilt = (opts.sentence_lilt
-        + symmetric_add(derived_seed_label(seed, 0x5217), timing, 0.25))
+        + symmetric_add(
+            derived_seed_label(seed, 0x5217),
+            timing.max(articulation),
+            0.25,
+        ))
     .clamp(0.0, 1.0);
     opts.paragraph_decline = (opts.paragraph_decline
-        + symmetric_add(derived_seed_label(seed, 0x5218), timing, 0.2))
+        + symmetric_add(
+            derived_seed_label(seed, 0x5218),
+            timing.max(articulation),
+            0.2,
+        ))
     .clamp(0.0, 1.0);
     opts.word_gap_ms = (opts.word_gap_ms
         * symmetric_factor(derived_seed_label(seed, 0x5219), timing, 0.5))
@@ -2625,6 +2844,8 @@ fn preset_dir(kind: PresetKindArg) -> PathBuf {
     match kind {
         PresetKindArg::Contour => base.join("go_contours"),
         PresetKindArg::Chain => base.join("chains"),
+        PresetKindArg::Randomness => base.join("randomness"),
+        PresetKindArg::PieceScene => base.join("piece_scenes"),
         PresetKindArg::All => base,
     }
 }
@@ -2635,6 +2856,8 @@ fn builtin_preset_entries(kind: PresetKindArg) -> Result<Vec<PresetEntry>> {
         PresetKindArg::All => {
             entries.extend(read_preset_family(PresetKindArg::Contour)?);
             entries.extend(read_preset_family(PresetKindArg::Chain)?);
+            entries.extend(read_preset_family(PresetKindArg::Randomness)?);
+            entries.extend(read_preset_family(PresetKindArg::PieceScene)?);
         }
         family => entries.extend(read_preset_family(family)?),
     }
@@ -2716,6 +2939,40 @@ fn preset_entry_from_path(kind: PresetKindArg, path: &Path) -> Result<PresetEntr
                     preset.stages.len(),
                     preset.stages.join(" -> ")
                 ),
+            })
+        }
+        PresetKindArg::Randomness | PresetKindArg::PieceScene => {
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .with_context(|| format!("invalid preset JSON in {}", path.display()))?;
+            let version = value["version"].as_u64().unwrap_or(1) as u16;
+            let name = value["name"]
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    path.file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .unwrap_or("preset")
+                        .to_string()
+                });
+            let kind_text = value["kind"]
+                .as_str()
+                .unwrap_or(match kind {
+                    PresetKindArg::Randomness => "randomness",
+                    PresetKindArg::PieceScene => "piece_scene",
+                    _ => "preset",
+                })
+                .to_string();
+            let summary = value["description"]
+                .as_str()
+                .or_else(|| value["cli_flags"].as_str())
+                .unwrap_or("data preset")
+                .to_string();
+            Ok(PresetEntry {
+                kind: kind_text,
+                version,
+                name,
+                path: path.display().to_string(),
+                summary,
             })
         }
         PresetKindArg::All => unreachable!(),

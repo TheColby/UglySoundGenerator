@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "piece_scene",
+  "name": "failure-chamber",
+  "description": "A claustrophobic room of short faults, unstable reflections, and punishing midrange hits.",
+  "command": "piece",
+  "args": {
+    "duration": 60.0,
+    "layout": "5.1.2",
+    "styles": [
+      "glitch",
+      "punish",
+      "distort",
+      "catastrophic"
+    ],
+    "events_per_second": 8.5,
+    "min_event_duration": 0.025,
+    "max_event_duration": 0.34,
+    "min_pan_width": 0.25,
+    "max_pan_width": 1.15,
+    "gain": 0.68,
+    "normalize_dbfs": -0.8,
+    "random_preset": "restless"
+  },
+  "sections": [
+    {
+      "name": "faults",
+      "range": "0.00..0.25",
+      "intent": "Small glitches appear as if a device is trying to boot."
+    },
+    {
+      "name": "containment",
+      "range": "0.25..0.72",
+      "intent": "Dense events crowd the bed channels while height channels catch splinters."
+    },
+    {
+      "name": "brownout",
+      "range": "0.72..1.00",
+      "intent": "Punish and catastrophic events dominate before the room collapses."
+    }
+  ],
+  "example_command": "cargo run -- piece --output out/failure-chamber.wav --scene failure-chamber --random-preset restless --seed 42002"
+}

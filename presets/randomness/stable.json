@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "randomness",
+  "name": "stable",
+  "description": "Light deterministic drift for repeatable renders that should still breathe.",
+  "controls": {
+    "randomness": 0.12,
+    "timing_randomness": 0.35,
+    "spectral_randomness": 0.25,
+    "amplitude_randomness": 0.2,
+    "density_randomness": 0.15,
+    "spatial_randomness": 0.2,
+    "articulation_randomness": 0.25,
+    "seed_offset": 0,
+    "seed_salt": 1001,
+    "seed_rerolls": 0
+  },
+  "cli_flags": "--random-preset stable"
+}

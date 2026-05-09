@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "kind": "piece_scene",
+  "name": "alarm-choir",
+  "description": "Layered siren-like ugly voices that gather into a harsh spatial chorus.",
+  "command": "piece",
+  "args": {
+    "duration": 120.0,
+    "layout": "9.1.6",
+    "styles": [
+      "harsh",
+      "hum",
+      "rub",
+      "punish",
+      "catastrophic"
+    ],
+    "events_per_second": 6.8,
+    "min_event_duration": 0.08,
+    "max_event_duration": 0.9,
+    "min_pan_width": 1.0,
+    "max_pan_width": 3.0,
+    "gain": 0.58,
+    "normalize_dbfs": -1.5,
+    "random_preset": "catastrophic"
+  },
+  "sections": [
+    {
+      "name": "call",
+      "range": "0.00..0.30",
+      "intent": "Separated alarm voices enter from different speaker families."
+    },
+    {
+      "name": "choir",
+      "range": "0.30..0.82",
+      "intent": "The sound field fills with clashing sustained and transient alarms."
+    },
+    {
+      "name": "evacuation",
+      "range": "0.82..1.00",
+      "intent": "Catastrophic accents push the scene into full failure."
+    }
+  ],
+  "example_command": "cargo run -- piece --output out/alarm-choir.wav --scene alarm-choir --random-preset catastrophic --seed 44004"
+}

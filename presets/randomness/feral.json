@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "randomness",
+  "name": "feral",
+  "description": "Aggressive movement across timing, spectrum, amplitude, and density for unstable batches.",
+  "controls": {
+    "randomness": 0.72,
+    "timing_randomness": 1.2,
+    "spectral_randomness": 1.35,
+    "amplitude_randomness": 1.0,
+    "density_randomness": 1.15,
+    "spatial_randomness": 1.1,
+    "articulation_randomness": 1.05,
+    "seed_offset": 0,
+    "seed_salt": 3003,
+    "seed_rerolls": 2
+  },
+  "cli_flags": "--random-preset feral"
+}

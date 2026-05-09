@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "piece_scene",
+  "name": "drone-field",
+  "description": "Wide low-density spatial smear with slow ugly motion and long event tails.",
+  "command": "piece",
+  "args": {
+    "duration": 90.0,
+    "layout": "7.1.4",
+    "styles": [
+      "hum",
+      "rub",
+      "buzz",
+      "meltdown"
+    ],
+    "events_per_second": 2.4,
+    "min_event_duration": 0.18,
+    "max_event_duration": 1.6,
+    "min_pan_width": 0.8,
+    "max_pan_width": 2.4,
+    "gain": 0.62,
+    "normalize_dbfs": -1.2,
+    "random_preset": "stable"
+  },
+  "sections": [
+    {
+      "name": "haze",
+      "range": "0.00..0.35",
+      "intent": "Sparse low-motion sources establish an unpleasant room tone."
+    },
+    {
+      "name": "pressure",
+      "range": "0.35..0.78",
+      "intent": "Density rises without losing the slow-drone identity."
+    },
+    {
+      "name": "residue",
+      "range": "0.78..1.00",
+      "intent": "Events thin out and leave abrasive stereo and height-channel ghosts."
+    }
+  ],
+  "example_command": "cargo run -- piece --output out/drone-field.wav --scene drone-field --random-preset stable --seed 41001"
+}

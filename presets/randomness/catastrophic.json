@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "randomness",
+  "name": "catastrophic",
+  "description": "Maximum practical instability for destructive searches, stress tests, and late-piece collapses.",
+  "controls": {
+    "randomness": 1.0,
+    "timing_randomness": 1.65,
+    "spectral_randomness": 1.8,
+    "amplitude_randomness": 1.45,
+    "density_randomness": 1.7,
+    "spatial_randomness": 1.45,
+    "articulation_randomness": 1.35,
+    "seed_offset": 0,
+    "seed_salt": 4004,
+    "seed_rerolls": 3
+  },
+  "cli_flags": "--random-preset catastrophic"
+}

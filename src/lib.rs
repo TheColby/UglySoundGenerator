@@ -460,6 +460,39 @@ pub enum SurroundLayout {
     Custom(u16),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum PieceSpatialRegion {
+    Full,
+    Front,
+    Rear,
+    High,
+    Low,
+    Left,
+    Right,
+    Ring,
+}
+
+impl PieceSpatialRegion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PieceSpatialRegion::Full => "full",
+            PieceSpatialRegion::Front => "front",
+            PieceSpatialRegion::Rear => "rear",
+            PieceSpatialRegion::High => "high",
+            PieceSpatialRegion::Low => "low",
+            PieceSpatialRegion::Left => "left",
+            PieceSpatialRegion::Right => "right",
+            PieceSpatialRegion::Ring => "ring",
+        }
+    }
+}
+
+impl fmt::Display for PieceSpatialRegion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl SurroundLayout {
     pub fn as_str(self) -> String {
         match self {
@@ -696,6 +729,8 @@ pub struct PieceOptions {
     pub seed: Option<u64>,
     pub styles: Vec<Style>,
     pub layout: Option<SurroundLayout>,
+    pub region: PieceSpatialRegion,
+    pub layer_rerolls: u32,
     pub channels: u16,
     pub gain: f64,
     pub normalize: bool,
@@ -716,6 +751,8 @@ impl Default for PieceOptions {
             seed: None,
             styles: available_styles().to_vec(),
             layout: Some(SurroundLayout::Stereo),
+            region: PieceSpatialRegion::Full,
+            layer_rerolls: 0,
             channels: 2,
             gain: 0.7,
             normalize: true,
@@ -855,12 +892,28 @@ pub struct PieceSummary {
     pub sample_rate: u32,
     pub channels: u16,
     pub layout: Option<String>,
+    pub region: String,
     pub events: usize,
     pub seed: u64,
     pub output_encoding: OutputEncoding,
     pub backend_requested: RenderBackend,
     pub backend_active: RenderBackend,
     pub jobs: usize,
+    pub event_plan: Vec<PieceEventPlan>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PieceEventPlan {
+    pub index: usize,
+    pub style: String,
+    pub seed: u64,
+    pub start_frame: usize,
+    pub start_s: f64,
+    pub duration_s: f64,
+    pub frames: usize,
+    pub gain: f64,
+    pub source_xyz: [f64; 3],
+    pub pan_width: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1328,6 +1381,7 @@ where
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let mut channels = vec![vec![0.0_f64; frames_usize]; channel_count];
     let (speaker_pos, lfe_idx) = speaker_positions(layout);
+    let mut event_plan = Vec::with_capacity(event_count);
 
     let mut last_style = None;
     for event_idx in 0..event_count {
@@ -1344,7 +1398,7 @@ where
         } else {
             rng.gen_range(0..=max_start)
         };
-        let event_seed = rng.r#gen::<u64>();
+        let event_seed = piece_layer_seed(rng.r#gen::<u64>(), opts.layer_rerolls, 0);
         let event_gain = (opts.gain * rng.gen_range(0.45_f64..1.0_f64)).clamp(0.0, 1.0);
         let mut event = render_samples_with_plan(
             event_frames,
@@ -1356,7 +1410,7 @@ where
         )?;
         if rng.gen_bool(0.72) && opts.styles.len() > 1 {
             let alt_style = pick_piece_style(&opts.styles, Some(style), &mut rng);
-            let alt_seed = rng.r#gen::<u64>();
+            let alt_seed = piece_layer_seed(rng.r#gen::<u64>(), opts.layer_rerolls, 1);
             let alt_gain = (event_gain * rng.gen_range(0.25_f64..0.7_f64)).clamp(0.0, 1.0);
             let alt = render_samples_with_plan(
                 event_frames,
@@ -1375,7 +1429,7 @@ where
                 opts.sample_rate as f64,
                 third_style,
                 (event_gain * rng.gen_range(0.15_f64..0.45_f64)).clamp(0.0, 1.0),
-                rng.r#gen::<u64>(),
+                piece_layer_seed(rng.r#gen::<u64>(), opts.layer_rerolls, 2),
                 &plan,
             )?;
             mix_piece_layer(&mut event, &third, rng.gen_range(0.14_f64..0.35_f64));
@@ -1387,7 +1441,7 @@ where
         );
         apply_event_envelope(&mut event, opts.sample_rate);
 
-        let source = random_piece_source_position(layout, &mut rng);
+        let source = random_piece_source_position(layout, opts.region, &mut rng);
         let width = rng
             .gen_range(opts.min_pan_width..=opts.max_pan_width)
             .max(0.05);
@@ -1403,6 +1457,18 @@ where
             }
         }
 
+        event_plan.push(PieceEventPlan {
+            index: event_idx + 1,
+            style: style.as_str().to_string(),
+            seed: event_seed,
+            start_frame: start,
+            start_s: start as f64 / opts.sample_rate as f64,
+            duration_s: event_frames as f64 / opts.sample_rate as f64,
+            frames: event_frames,
+            gain: event_gain,
+            source_xyz: source,
+            pan_width: width,
+        });
         progress(event_idx + 1, event_count, style);
     }
 
@@ -1417,12 +1483,14 @@ where
         sample_rate: opts.sample_rate,
         channels: layout.channels(),
         layout: Some(layout.as_str()),
+        region: opts.region.as_str().to_string(),
         events: event_count,
         seed,
         output_encoding: opts.output_encoding,
         backend_requested: plan.requested,
         backend_active: plan.active,
         jobs: plan.jobs,
+        event_plan,
     })
 }
 
@@ -1850,6 +1918,13 @@ fn mix_piece_layer(base: &mut [f64], layer: &[f64], mix: f64) {
     }
 }
 
+fn piece_layer_seed(mut seed: u64, rerolls: u32, layer_idx: u64) -> u64 {
+    for idx in 0..rerolls {
+        seed = derive_seed(seed, 0xBADC_0DE0 ^ layer_idx ^ idx as u64);
+    }
+    seed
+}
+
 fn diversify_piece_event(event: &mut [f64], sample_rate: f64, seed: u64) {
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let fx_count = if rng.gen_bool(0.22) {
@@ -1988,16 +2063,44 @@ fn piece_spatial_weights(
     weights
 }
 
-fn random_piece_source_position(layout: SurroundLayout, rng: &mut ChaCha8Rng) -> [f64; 3] {
-    let az = rng.gen_range(-180.0_f64..180.0_f64).to_radians();
-    let radius = rng.gen_range(0.45_f64..1.35_f64);
-    let z = match layout {
-        SurroundLayout::FiveOneTwo
-        | SurroundLayout::FiveOneFour
-        | SurroundLayout::SevenOneTwo
-        | SurroundLayout::SevenOneFour
-        | SurroundLayout::NineOneSix => rng.gen_range(0.0_f64..1.0_f64),
-        _ => rng.gen_range(-0.1_f64..0.15_f64),
+fn random_piece_source_position(
+    layout: SurroundLayout,
+    region: PieceSpatialRegion,
+    rng: &mut ChaCha8Rng,
+) -> [f64; 3] {
+    let az_deg = match region {
+        PieceSpatialRegion::Front => rng.gen_range(-55.0_f64..55.0_f64),
+        PieceSpatialRegion::Rear => {
+            if rng.gen_bool(0.5) {
+                rng.gen_range(-180.0_f64..-110.0_f64)
+            } else {
+                rng.gen_range(110.0_f64..180.0_f64)
+            }
+        }
+        PieceSpatialRegion::Left => rng.gen_range(-160.0_f64..-20.0_f64),
+        PieceSpatialRegion::Right => rng.gen_range(20.0_f64..160.0_f64),
+        PieceSpatialRegion::Ring => rng.gen_range(-180.0_f64..180.0_f64),
+        PieceSpatialRegion::Full | PieceSpatialRegion::High | PieceSpatialRegion::Low => {
+            rng.gen_range(-180.0_f64..180.0_f64)
+        }
+    };
+    let az = az_deg.to_radians();
+    let radius = if matches!(region, PieceSpatialRegion::Ring) {
+        rng.gen_range(0.95_f64..1.55_f64)
+    } else {
+        rng.gen_range(0.45_f64..1.35_f64)
+    };
+    let z = match region {
+        PieceSpatialRegion::High => rng.gen_range(0.55_f64..1.0_f64),
+        PieceSpatialRegion::Low => rng.gen_range(-0.15_f64..0.12_f64),
+        _ => match layout {
+            SurroundLayout::FiveOneTwo
+            | SurroundLayout::FiveOneFour
+            | SurroundLayout::SevenOneTwo
+            | SurroundLayout::SevenOneFour
+            | SurroundLayout::NineOneSix => rng.gen_range(0.0_f64..1.0_f64),
+            _ => rng.gen_range(-0.1_f64..0.15_f64),
+        },
     };
     [az.sin() * radius, az.cos() * radius, z]
 }

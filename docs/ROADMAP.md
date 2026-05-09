@@ -32,11 +32,11 @@ Goal: make randomness and long-form generation feel like first-class composition
 Planned work:
 
 - expand seed controls so `render`, `speech`, `go`, `mutate`, `evolve`, and `marathon` expose a more uniform randomness contract
-- add named randomness presets such as `stable`, `restless`, `feral`, and `catastrophic`
+- keep the named randomness presets `stable`, `restless`, `feral`, and `catastrophic` aligned between CLI behavior and data presets
 - expose separate timing, spectral, density, spatial, and articulation randomness on more commands
 - add seed manifests so long-running batch jobs can be reproduced exactly from one file
 - add “reroll just one layer” workflows for speech units, stages, and contours
-- deepen `piece` with phrase-scale structure, section contrast, burst logic, and reusable scene presets
+- deepen `piece` with phrase-scale structure, section contrast, burst logic, and direct loading for reusable scene presets
 - expand spatial composition beyond raw channel spread: motion curves, region constraints, and speaker-family targeting
 
 ### `v0.5`: Speech System Deepening
@@ -79,7 +79,16 @@ Planned work:
 - grow the preset library for `chain`, `go`, speech profiles, and randomness recipes
 - add curated “families” of ugly sound recipes with predictable intent
 - improve preset discoverability in the CLI and docs
-- add piece-scene presets such as `drone-field`, `failure-chamber`, `arcade-collapse`, and `alarm-choir`
+- keep the piece-scene presets `drone-field`, `failure-chamber`, `arcade-collapse`, and `alarm-choir` aligned between CLI behavior and data presets
+
+## Preset Slice Landed
+
+The docs/preset slice now has two recipe libraries that mirror first-class CLI behavior:
+
+- `presets/randomness/`: named recipes for the existing randomness knobs, including `stable`, `restless`, `feral`, and `catastrophic`
+- `presets/piece_scenes/`: reusable `piece` scene recipes with current CLI-compatible `example_command` strings and future-facing section intent
+
+These files are intentionally data-first, while `--random-preset`, `piece --scene`, and `usg presets --kind randomness|piece-scene` provide the direct CLI hooks.
 
 ### Corpus And Research Support
 

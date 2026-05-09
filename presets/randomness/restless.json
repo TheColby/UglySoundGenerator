@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "randomness",
+  "name": "restless",
+  "description": "Noticeable timing and color variation while keeping density and level readable.",
+  "controls": {
+    "randomness": 0.38,
+    "timing_randomness": 0.85,
+    "spectral_randomness": 0.75,
+    "amplitude_randomness": 0.45,
+    "density_randomness": 0.55,
+    "spatial_randomness": 0.8,
+    "articulation_randomness": 0.75,
+    "seed_offset": 0,
+    "seed_salt": 2002,
+    "seed_rerolls": 1
+  },
+  "cli_flags": "--random-preset restless"
+}
