@@ -254,12 +254,105 @@ cargo run -- normalize-pack in_wavs out_wavs --level 500
 cargo run -- evolve --generations 5 --population 12 --out-dir out/evolve
 ```
 
-### `usg speech` and `usg speech-pack`
+### `usg speech`
+
+Render chip-speech-inspired audio from inline text or a UTF-8 text file.
 
 ```bash
-cargo run -- speech --text "warning warning" --chip ps1 --output out/ps1_speech.wav
-cargo run -- speech-pack --text "do not touch that cable" --out-dir out/speech-pack
+cargo run -- speech --text "warning warning" --profile c64-sam --output out/c64_speech.wav
+cargo run -- speech --text "WARNING 404!" --profile tms5220 --output out/tms5220_warning.wav
+cargo run -- speech --text-file docs/script.txt --input-mode paragraph --profile c64-sam --output out/script.wav
+cargo run -- speech --text "do not touch that cable" --profile votrax-sc01 --primary-osc phoneme --secondary-osc buzz --tertiary-osc koch --output out/votrax.wav
 ```
+
+The v0.5 speech surface is intentionally deeper than a single `--text -> wav` path:
+
+- text input: `--text <TEXT>` or `--text-file <PATH>`
+- normalization: enabled by default; `--no-normalize-text` disables digit expansion, quote/dash cleanup, whitespace cleanup, and automatic uppercasing
+- input modes: `--input-mode auto|character|word|sentence|paragraph`
+- profiles: `--profile votrax-sc01|tms5220|sp0256|mea8000|s14001a|c64-sam|arcadey90s|handheld-lcd|speak-and-spell|macintalk|yamaha-psg|amiga-narrator`
+- profile backends in exports: `lpc`, `formant-grid`, `sam-vocal-tract`, `arcade-pcm`, `delta-modulation`, `klatt-cascade`, or `psg-formant`
+- oscillator slots: `--primary-osc`, `--secondary-osc`, and `--tertiary-osc`
+- oscillator choices: `sine`, `pulse`, `triangle`, `saw`, `noise`, `buzz`, `formant`, `vowel`, `ring`, `fold`, `organ`, `fm`, `sync`, `lfsr`, `grain`, `chirp`, `subharmonic`, `reed`, `click`, `comb`, `koch`, `mandelbrot`, `strange`, `phoneme`, `glottal`, `aspiration`, `nasal-buzz`, `robotic-vocoder`, `plosive-burst`, `whisper`, `lpc-pulse`, `arcade-delta`, `casio-formant`, `phase-distort`
+- timing/prosody: `--units-per-second`, `--word-gap-ms`, `--sentence-gap-ms`, `--paragraph-gap-ms`, `--punctuation-gap-ms`, `--word-accent`, `--sentence-lilt`, `--paragraph-decline`, `--emphasis`, `--attack-ms`, `--release-ms`
+- voice color: `--pitch-hz`, `--pitch-jitter`, `--vibrato-hz`, `--vibrato-depth`, `--formant-shift`, `--consonant-noise`, `--vowel-mix`, `--hiss`, `--buzz`, `--fold`, `--chaos`, `--robotize`, `--ring-mix`, `--sub-mix`, `--nasal`, `--throat`, `--drift`, `--resampler-grit`, `--excitation`, `--breathiness`, `--plosive-pop`, `--sibilance`, `--nasal-leak`, `--phoneme-slur`, `--coarticulation`, `--phrase-swing`
+- chip grime: `--bitcrush-bits`, `--sample-hold-hz`, plus shared backend post-FX flags
+- reproducibility: `--seed`, `--unit-rerolls`, and the shared randomness controls including `--random-preset`
+- exports: `--analysis-json <PATH>` writes render metadata, psycho analysis, and intelligibility; `--timeline-json <PATH>` writes the parsed unit/phoneme timeline
+
+Profile-to-backend mapping:
+
+| Profiles | Backend family |
+| --- | --- |
+| `votrax-sc01`, `tms5220`, `sp0256` | `lpc` |
+| `mea8000`, `s14001a` | `formant-grid` |
+| `c64-sam` | `sam-vocal-tract` |
+| `arcadey90s`, `handheld-lcd` | `arcade-pcm` |
+| `speak-and-spell` | `delta-modulation` |
+| `macintalk`, `amiga-narrator` | `klatt-cascade` |
+| `yamaha-psg` | `psg-formant` |
+
+Examples:
+
+```bash
+cargo run -- speech \
+  --text "Deck 7 pressure is 42 percent. Evacuate?" \
+  --profile sp0256 \
+  --input-mode sentence \
+  --primary-osc phoneme \
+  --secondary-osc formant \
+  --tertiary-osc lfsr \
+  --analysis-json out/deck7.analysis.json \
+  --timeline-json out/deck7.timeline.json \
+  --output out/deck7.wav
+```
+
+```bash
+cargo run -- speech \
+  --text "bad radio paragraph one\n\nbad radio paragraph two" \
+  --input-mode paragraph \
+  --profile handheld-lcd \
+  --units-per-second 8 \
+  --paragraph-gap-ms 360 \
+  --paragraph-decline 0.22 \
+  --primary-osc phoneme \
+  --secondary-osc noise \
+  --tertiary-osc click \
+  --output out/paragraph_lcd.wav
+```
+
+Timeline JSON is the main phoneme parser diagnostic. Each row includes the source token, normalized token, derived label, unit kind, token/phoneme indices, start/end/duration/gap timing, emphasis, pitch/formants, `voiced`, `noisy`, oscillator/excitation family, parse rule/confidence, unit seed, and `backend_kind`.
+
+### `usg speech-pack`
+
+Render all speech-chip profiles for the same input, analyze them, compute an intelligibility index, and write ranked reports.
+
+```bash
+cargo run -- speech-pack --text "do not touch that cable" --out-dir out/speech-pack
+cargo run -- speech-pack --text "do not touch that cable" --rank-by ugliness --out-dir out/speech-pack-ugly
+cargo run -- speech-pack --text-file docs/script.txt --rank-by intelligibility --summary out/speech-summary.json --csv out/speech-ranking.csv --html out/speech-report.html
+```
+
+Key options:
+
+- `--rank-by <ugliness|intelligibility|balanced>`
+- `--model <basic|psycho>`
+- `--input-mode <auto|character|word|sentence|paragraph>`
+- `--summary <PATH>`
+- `--csv <PATH>`
+- `--html <PATH>`
+- `--top <N>`
+- `--seed <U64>`
+- `--seed-stride <U64>`
+- shared output, backend, jobs, GPU post-FX, and randomness flags
+
+`speech-pack` writes one WAV per chip profile plus:
+
+- `summary.json`: full analysis objects, intelligibility breakdowns, seeds, backend info, and the ranking table
+- `ranking.csv`: compact profile/output/Colbys/intelligibility/rank-score table
+- `report.html`: browser-friendly comparison report
+
+The rank modes let you choose the tradeoff: `ugliness` rewards higher Colbys, `intelligibility` rewards the speech intelligibility index, and `balanced` favors material that stays legible while still scoring ugly.
 
 ## Where To Go Next
 

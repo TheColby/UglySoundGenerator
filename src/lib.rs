@@ -151,7 +151,7 @@ impl fmt::Display for Effect {
 }
 
 impl SpeechChipProfile {
-    pub const ALL: [SpeechChipProfile; 8] = [
+    pub const ALL: [SpeechChipProfile; 12] = [
         SpeechChipProfile::VotraxSc01,
         SpeechChipProfile::Tms5220,
         SpeechChipProfile::Sp0256,
@@ -160,6 +160,10 @@ impl SpeechChipProfile {
         SpeechChipProfile::C64Sam,
         SpeechChipProfile::Arcadey90s,
         SpeechChipProfile::HandheldLcd,
+        SpeechChipProfile::SpeakAndSpell,
+        SpeechChipProfile::Macintalk,
+        SpeechChipProfile::YamahaPsg,
+        SpeechChipProfile::AmigaNarrator,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -172,6 +176,10 @@ impl SpeechChipProfile {
             SpeechChipProfile::C64Sam => "c64-sam",
             SpeechChipProfile::Arcadey90s => "arcadey90s",
             SpeechChipProfile::HandheldLcd => "handheld-lcd",
+            SpeechChipProfile::SpeakAndSpell => "speak-and-spell",
+            SpeechChipProfile::Macintalk => "macintalk",
+            SpeechChipProfile::YamahaPsg => "yamaha-psg",
+            SpeechChipProfile::AmigaNarrator => "amiga-narrator",
         }
     }
 }
@@ -189,6 +197,9 @@ impl SpeechBackendKind {
             SpeechBackendKind::FormantGrid => "formant-grid",
             SpeechBackendKind::SamVocalTract => "sam-vocal-tract",
             SpeechBackendKind::ArcadePcm => "arcade-pcm",
+            SpeechBackendKind::DeltaModulation => "delta-modulation",
+            SpeechBackendKind::KlattCascade => "klatt-cascade",
+            SpeechBackendKind::PsgFormant => "psg-formant",
         }
     }
 }
@@ -200,7 +211,7 @@ impl fmt::Display for SpeechBackendKind {
 }
 
 impl SpeechOscillator {
-    pub const ALL: [SpeechOscillator; 24] = [
+    pub const ALL: [SpeechOscillator; 34] = [
         SpeechOscillator::Sine,
         SpeechOscillator::Pulse,
         SpeechOscillator::Triangle,
@@ -225,6 +236,16 @@ impl SpeechOscillator {
         SpeechOscillator::Mandelbrot,
         SpeechOscillator::Strange,
         SpeechOscillator::Phoneme,
+        SpeechOscillator::Glottal,
+        SpeechOscillator::Aspiration,
+        SpeechOscillator::NasalBuzz,
+        SpeechOscillator::RoboticVocoder,
+        SpeechOscillator::PlosiveBurst,
+        SpeechOscillator::Whisper,
+        SpeechOscillator::LpcPulse,
+        SpeechOscillator::ArcadeDelta,
+        SpeechOscillator::CasioFormant,
+        SpeechOscillator::PhaseDistort,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -253,11 +274,61 @@ impl SpeechOscillator {
             SpeechOscillator::Mandelbrot => "mandelbrot",
             SpeechOscillator::Strange => "strange",
             SpeechOscillator::Phoneme => "phoneme",
+            SpeechOscillator::Glottal => "glottal",
+            SpeechOscillator::Aspiration => "aspiration",
+            SpeechOscillator::NasalBuzz => "nasal-buzz",
+            SpeechOscillator::RoboticVocoder => "robotic-vocoder",
+            SpeechOscillator::PlosiveBurst => "plosive-burst",
+            SpeechOscillator::Whisper => "whisper",
+            SpeechOscillator::LpcPulse => "lpc-pulse",
+            SpeechOscillator::ArcadeDelta => "arcade-delta",
+            SpeechOscillator::CasioFormant => "casio-formant",
+            SpeechOscillator::PhaseDistort => "phase-distort",
         }
     }
 }
 
 impl fmt::Display for SpeechOscillator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl SpeechExcitation {
+    pub const ALL: [SpeechExcitation; 12] = [
+        SpeechExcitation::Auto,
+        SpeechExcitation::VoicedPulse,
+        SpeechExcitation::BuzzSaw,
+        SpeechExcitation::WhisperNoise,
+        SpeechExcitation::Aspiration,
+        SpeechExcitation::NasalDrone,
+        SpeechExcitation::RoboticCarrier,
+        SpeechExcitation::PlosiveClicks,
+        SpeechExcitation::DeltaStepper,
+        SpeechExcitation::LpcImpulse,
+        SpeechExcitation::GlottalFry,
+        SpeechExcitation::BrokenSampler,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SpeechExcitation::Auto => "auto",
+            SpeechExcitation::VoicedPulse => "voiced-pulse",
+            SpeechExcitation::BuzzSaw => "buzz-saw",
+            SpeechExcitation::WhisperNoise => "whisper-noise",
+            SpeechExcitation::Aspiration => "aspiration",
+            SpeechExcitation::NasalDrone => "nasal-drone",
+            SpeechExcitation::RoboticCarrier => "robotic-carrier",
+            SpeechExcitation::PlosiveClicks => "plosive-clicks",
+            SpeechExcitation::DeltaStepper => "delta-stepper",
+            SpeechExcitation::LpcImpulse => "lpc-impulse",
+            SpeechExcitation::GlottalFry => "glottal-fry",
+            SpeechExcitation::BrokenSampler => "broken-sampler",
+        }
+    }
+}
+
+impl fmt::Display for SpeechExcitation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
@@ -312,6 +383,10 @@ pub enum SpeechChipProfile {
     C64Sam,
     Arcadey90s,
     HandheldLcd,
+    SpeakAndSpell,
+    Macintalk,
+    YamahaPsg,
+    AmigaNarrator,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -320,6 +395,9 @@ pub enum SpeechBackendKind {
     FormantGrid,
     SamVocalTract,
     ArcadePcm,
+    DeltaModulation,
+    KlattCascade,
+    PsgFormant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -348,6 +426,32 @@ pub enum SpeechOscillator {
     Mandelbrot,
     Strange,
     Phoneme,
+    Glottal,
+    Aspiration,
+    NasalBuzz,
+    RoboticVocoder,
+    PlosiveBurst,
+    Whisper,
+    LpcPulse,
+    ArcadeDelta,
+    CasioFormant,
+    PhaseDistort,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SpeechExcitation {
+    Auto,
+    VoicedPulse,
+    BuzzSaw,
+    WhisperNoise,
+    Aspiration,
+    NasalDrone,
+    RoboticCarrier,
+    PlosiveClicks,
+    DeltaStepper,
+    LpcImpulse,
+    GlottalFry,
+    BrokenSampler,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -778,6 +882,7 @@ pub struct SpeechRenderOptions {
     pub primary_osc: SpeechOscillator,
     pub secondary_osc: SpeechOscillator,
     pub tertiary_osc: SpeechOscillator,
+    pub excitation: SpeechExcitation,
     pub gain: f64,
     pub normalize: bool,
     pub normalize_dbfs: f64,
@@ -816,6 +921,14 @@ pub struct SpeechRenderOptions {
     pub throat: f64,
     pub drift: f64,
     pub resampler_grit: f64,
+    pub breathiness: f64,
+    pub plosive_pop: f64,
+    pub sibilance: f64,
+    pub nasal_leak: f64,
+    pub chip_clock_hz: f64,
+    pub phoneme_slur: f64,
+    pub coarticulation: f64,
+    pub phrase_swing: f64,
 }
 
 impl Default for SpeechRenderOptions {
@@ -830,6 +943,7 @@ impl Default for SpeechRenderOptions {
             primary_osc: SpeechOscillator::Phoneme,
             secondary_osc: SpeechOscillator::Buzz,
             tertiary_osc: SpeechOscillator::Koch,
+            excitation: SpeechExcitation::Auto,
             gain: 0.85,
             normalize: true,
             normalize_dbfs: -0.6,
@@ -868,6 +982,14 @@ impl Default for SpeechRenderOptions {
             throat: 0.14,
             drift: 0.03,
             resampler_grit: 0.25,
+            breathiness: 0.12,
+            plosive_pop: 0.18,
+            sibilance: 0.24,
+            nasal_leak: 0.12,
+            chip_clock_hz: 1_000_000.0,
+            phoneme_slur: 0.08,
+            coarticulation: 0.18,
+            phrase_swing: 0.0,
         }
     }
 }
@@ -926,13 +1048,22 @@ pub struct SpeechSummary {
     pub input_mode: SpeechInputMode,
     pub text_len: usize,
     pub normalized_text: String,
+    pub normalized_changed: bool,
+    pub token_count: usize,
+    pub sentence_count: usize,
+    pub paragraph_count: usize,
     pub units_rendered: usize,
     pub phonemes_rendered: usize,
+    pub excitation: SpeechExcitation,
+    pub primary_osc: SpeechOscillator,
+    pub secondary_osc: SpeechOscillator,
+    pub tertiary_osc: SpeechOscillator,
     pub seed: u64,
     pub output_encoding: OutputEncoding,
     pub backend_requested: RenderBackend,
     pub backend_active: RenderBackend,
     pub jobs: usize,
+    pub phoneme_diagnostics: SpeechParseDiagnostics,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -940,9 +1071,16 @@ pub struct SpeechTimelineEntry {
     pub index: usize,
     pub label: String,
     pub source: String,
+    pub normalized_source: String,
     pub kind: String,
+    pub token_index: usize,
+    pub phoneme_index: usize,
+    pub word_index: usize,
+    pub sentence_index: usize,
+    pub paragraph_index: usize,
     pub start_s: f64,
     pub end_s: f64,
+    pub duration_s: f64,
     pub gap_after_s: f64,
     pub emphasis: f64,
     pub pitch_hz: f64,
@@ -951,6 +1089,41 @@ pub struct SpeechTimelineEntry {
     pub voiced: bool,
     pub noisy: bool,
     pub backend_kind: String,
+    pub oscillator_family: String,
+    pub excitation_family: String,
+    pub excitation: String,
+    pub primary_osc: String,
+    pub secondary_osc: String,
+    pub tertiary_osc: String,
+    pub parse_rule: String,
+    pub parse_confidence: f64,
+    pub unit_seed: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpeechParseDiagnostics {
+    pub normalized_text: String,
+    pub input_mode: String,
+    pub normalization_notes: Vec<String>,
+    pub normalized_changed: bool,
+    pub tokens: usize,
+    pub phonemes: usize,
+    pub vowels: usize,
+    pub consonants: usize,
+    pub punctuation: usize,
+    pub whitespace: usize,
+    pub paragraphs: usize,
+    pub sentences: usize,
+    pub abbreviation_expansions: usize,
+    pub number_expansions: usize,
+    pub mixed_case_tokens: usize,
+    pub rules: Vec<SpeechParseRuleCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpeechParseRuleCount {
+    pub rule: String,
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1524,6 +1697,7 @@ pub fn render_speech_with_artifacts_to_wav_with_engine(
     let backend_kind = speech_backend_for_profile(opts.chip_profile);
     let normalized_text = normalized_speech_text(&opts.text, opts.normalize_text);
     let units = speech_units_for_mode(&normalized_text, opts.input_mode);
+    let diagnostics = speech_parse_diagnostics(opts, &normalized_text, &units);
     let (mut samples, timeline) =
         render_speech_samples_with_plan(opts, &units, seed, backend_kind, &plan)?;
     let frames = samples.len();
@@ -1540,17 +1714,26 @@ pub fn render_speech_with_artifacts_to_wav_with_engine(
             backend_kind,
             input_mode: opts.input_mode,
             text_len: opts.text.chars().count(),
+            normalized_changed: normalized_text != opts.text.replace("\r\n", "\n"),
             normalized_text,
+            token_count: diagnostics.tokens,
+            sentence_count: diagnostics.sentences,
+            paragraph_count: diagnostics.paragraphs,
             units_rendered: units.len(),
             phonemes_rendered: timeline
                 .iter()
                 .filter(|entry| entry.kind == "phoneme")
                 .count(),
+            excitation: opts.excitation,
+            primary_osc: opts.primary_osc,
+            secondary_osc: opts.secondary_osc,
+            tertiary_osc: opts.tertiary_osc,
             seed,
             output_encoding: opts.output_encoding,
             backend_requested: plan.requested,
             backend_active: plan.active,
             jobs: plan.jobs,
+            phoneme_diagnostics: diagnostics,
         },
         timeline,
     })
@@ -1653,14 +1836,18 @@ fn render_samples_with_plan(
 struct SpeechUnit {
     label: String,
     source: String,
+    normalized_source: String,
     kind: SpeechSymbolKind,
     duration_s: f64,
     gap_s: f64,
     emphasis: f64,
     params: SpeechSymbolParams,
+    token_index: usize,
     word_index: usize,
     sentence_index: usize,
     paragraph_index: usize,
+    parse_rule: String,
+    parse_confidence: f64,
 }
 
 fn render_speech_samples_with_plan(
@@ -1691,8 +1878,15 @@ fn render_speech_samples_with_plan(
 
     for (idx, unit) in units.iter().enumerate() {
         let phoneme = unit.params;
+        let unit_seed = derive_seed(seed, idx as u64);
         let pace_scale = 11.0 / opts.units_per_second.max(1.0);
-        let frames = (unit.duration_s * pace_scale * sample_rate).max(1.0) as usize;
+        let swing = if idx % 2 == 0 {
+            1.0 - opts.phrase_swing * 0.12
+        } else {
+            1.0 + opts.phrase_swing * 0.12
+        };
+        let frames =
+            (unit.duration_s * pace_scale * swing.max(0.25) * sample_rate).max(1.0) as usize;
         let attack_s = opts.attack_ms * 0.001;
         let release_s = opts.release_ms * 0.001;
         let unit_center = idx as f64 / units.len().max(1) as f64;
@@ -1750,6 +1944,18 @@ fn render_speech_samples_with_plan(
             let target_formant1 = phoneme.formant1 * opts.formant_shift * tuning.formant_mul;
             let target_formant2 = phoneme.formant2 * opts.formant_shift * tuning.formant_mul;
             let intensity = (1.0 + opts.emphasis * punct_emphasis).max(0.2);
+            let excitation = speech_excitation_sample(
+                opts.excitation,
+                pitch,
+                target_formant1,
+                target_formant2,
+                phoneme,
+                t + idx as f64 * unit.duration_s,
+                progress,
+                opts,
+                &tuning,
+                &mut rng,
+            );
             let primary = speech_oscillator_sample(
                 opts.primary_osc,
                 pitch,
@@ -1803,6 +2009,7 @@ fn render_speech_samples_with_plan(
                     * opts.consonant_noise
                     * phoneme.noise_mul
                     * tuning.noise_mul
+                    * (1.0 + opts.sibilance * phoneme.brightness)
             } else {
                 0.0
             };
@@ -1813,7 +2020,21 @@ fn render_speech_samples_with_plan(
             let ring = opts.ring_mix * primary * secondary;
             let sub = opts.sub_mix * (2.0 * PI * pitch * 0.5 * t).sin();
             let nasal = opts.nasal * (2.0 * PI * target_formant1 * 0.42 * t).sin();
+            let nasal_leak = opts.nasal_leak
+                * phoneme.vowel_mul
+                * (2.0 * PI * (target_formant1 * 0.36).max(40.0) * t).sin();
             let throat = opts.throat * saw((pitch * 0.25).max(20.0), t);
+            let breath = opts.breathiness
+                * rng.gen_range(-1.0_f64..1.0_f64)
+                * (0.35 + 0.65 * phoneme.brightness)
+                * env;
+            let plosive = if phoneme.noisy && progress < 0.08 {
+                opts.plosive_pop
+                    * (1.0 - progress / 0.08).max(0.0)
+                    * rng.gen_range(-1.0_f64..1.0_f64)
+            } else {
+                0.0
+            };
             let robot = opts.robotize
                 * (2.0 * PI * (tuning.robot_carrier_hz + 40.0 * phoneme.brightness) * t).sin()
                 * env;
@@ -1828,9 +2049,13 @@ fn render_speech_samples_with_plan(
                     + ring
                     + sub
                     + nasal
+                    + nasal_leak
                     + throat
                     + robot)
+                + excitation * env * intensity
                 + noise
+                + breath
+                + plosive
                 + rng.gen_range(-1.0_f64..1.0_f64) * opts.hiss * tuning.hiss_mul;
             sample += opts.buzz * tuning.buzz_mul * square((pitch * 0.5).max(20.0), t) * env * 0.2;
             sample = apply_speech_chip_fx(
@@ -1863,9 +2088,16 @@ fn render_speech_samples_with_plan(
             index: idx,
             label: unit.label.clone(),
             source: unit.source.clone(),
+            normalized_source: unit.normalized_source.clone(),
             kind: unit.kind.as_str().to_string(),
+            token_index: unit.token_index,
+            phoneme_index: idx,
+            word_index: unit.word_index,
+            sentence_index: unit.sentence_index,
+            paragraph_index: unit.paragraph_index,
             start_s: (end_s - frames as f64 / sample_rate).max(0.0),
             end_s,
+            duration_s: frames as f64 / sample_rate,
             gap_after_s: gap_frames as f64 / sample_rate,
             emphasis: unit.emphasis,
             pitch_hz: opts.pitch_hz * tuning.pitch_mul * phoneme.pitch_mul,
@@ -1874,6 +2106,15 @@ fn render_speech_samples_with_plan(
             voiced: phoneme.voiced,
             noisy: phoneme.noisy,
             backend_kind: backend_kind.as_str().to_string(),
+            oscillator_family: opts.primary_osc.as_str().to_string(),
+            excitation_family: opts.excitation.as_str().to_string(),
+            excitation: opts.excitation.as_str().to_string(),
+            primary_osc: opts.primary_osc.as_str().to_string(),
+            secondary_osc: opts.secondary_osc.as_str().to_string(),
+            tertiary_osc: opts.tertiary_osc.as_str().to_string(),
+            parse_rule: unit.parse_rule.clone(),
+            parse_confidence: unit.parse_confidence,
+            unit_seed,
         });
         out.extend(std::iter::repeat_n(0.0, gap_frames));
     }
@@ -3038,10 +3279,20 @@ pub fn validate_speech_options(opts: &SpeechRenderOptions) -> Result<()> {
         || !(0.0..=1.0).contains(&opts.throat)
         || !(0.0..=1.0).contains(&opts.drift)
         || !(0.0..=1.0).contains(&opts.resampler_grit)
+        || !(0.0..=2.0).contains(&opts.breathiness)
+        || !(0.0..=2.0).contains(&opts.plosive_pop)
+        || !(0.0..=2.0).contains(&opts.sibilance)
+        || !(0.0..=1.5).contains(&opts.nasal_leak)
+        || !(0.0..=1.0).contains(&opts.phoneme_slur)
+        || !(0.0..=1.0).contains(&opts.coarticulation)
+        || !(0.0..=1.0).contains(&opts.phrase_swing)
     {
         return Err(anyhow!(
             "one or more speech mix parameters are out of range"
         ));
+    }
+    if !(1_000.0..=10_000_000.0).contains(&opts.chip_clock_hz) {
+        return Err(anyhow!("chip-clock-hz must be between 1000 and 10000000"));
     }
     if !(0.5..=16.0).contains(&opts.fold) {
         return Err(anyhow!("fold must be between 0.5 and 16.0"));
@@ -3349,6 +3600,54 @@ fn speech_profile_tuning(profile: SpeechChipProfile) -> SpeechProfileTuning {
             default_bitcrush_bits: 4.8,
             default_fold: 3.3,
         },
+        SpeechChipProfile::SpeakAndSpell => SpeechProfileTuning {
+            backend: SpeechBackendKind::DeltaModulation,
+            pitch_mul: 0.9,
+            formant_mul: 1.04,
+            noise_mul: 0.72,
+            buzz_mul: 0.82,
+            hiss_mul: 0.38,
+            robot_carrier_hz: 430.0,
+            default_hold_hz: 8_200.0,
+            default_bitcrush_bits: 6.0,
+            default_fold: 2.6,
+        },
+        SpeechChipProfile::Macintalk => SpeechProfileTuning {
+            backend: SpeechBackendKind::KlattCascade,
+            pitch_mul: 1.05,
+            formant_mul: 1.12,
+            noise_mul: 0.62,
+            buzz_mul: 0.72,
+            hiss_mul: 0.32,
+            robot_carrier_hz: 390.0,
+            default_hold_hz: 15_000.0,
+            default_bitcrush_bits: 10.0,
+            default_fold: 1.7,
+        },
+        SpeechChipProfile::YamahaPsg => SpeechProfileTuning {
+            backend: SpeechBackendKind::PsgFormant,
+            pitch_mul: 1.2,
+            formant_mul: 0.9,
+            noise_mul: 1.0,
+            buzz_mul: 1.35,
+            hiss_mul: 0.72,
+            robot_carrier_hz: 980.0,
+            default_hold_hz: 11_025.0,
+            default_bitcrush_bits: 5.0,
+            default_fold: 3.4,
+        },
+        SpeechChipProfile::AmigaNarrator => SpeechProfileTuning {
+            backend: SpeechBackendKind::KlattCascade,
+            pitch_mul: 1.11,
+            formant_mul: 1.0,
+            noise_mul: 0.7,
+            buzz_mul: 0.95,
+            hiss_mul: 0.5,
+            robot_carrier_hz: 760.0,
+            default_hold_hz: 16_000.0,
+            default_bitcrush_bits: 8.0,
+            default_fold: 2.1,
+        },
     }
 }
 
@@ -3417,6 +3716,13 @@ fn normalized_speech_text(text: &str, normalize: bool) -> String {
 }
 
 fn speech_units_for_mode(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit> {
+    if matches!(mode, SpeechInputMode::Sentence) {
+        return speech_units_from_phrase_chunks(text, mode, |ch| matches!(ch, '.' | '!' | '?'));
+    }
+    if matches!(mode, SpeechInputMode::Paragraph) {
+        return speech_units_from_paragraphs(text, mode);
+    }
+
     let mode = if matches!(mode, SpeechInputMode::Auto) {
         if text.contains("\n\n") || text.lines().count() > 1 {
             SpeechInputMode::Paragraph
@@ -3438,6 +3744,97 @@ fn speech_units_for_mode(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit> {
     speech_units_from_tokens(text, mode)
 }
 
+fn speech_units_from_phrase_chunks(
+    text: &str,
+    mode: SpeechInputMode,
+    is_boundary: impl Fn(char) -> bool,
+) -> Vec<SpeechUnit> {
+    let mut units = Vec::new();
+    let mut chunk = String::new();
+    let mut sentence_index = 0usize;
+    let mut word_index = 0usize;
+    for ch in text.chars() {
+        chunk.push(ch);
+        if is_boundary(ch) {
+            push_phrase_unit(&mut units, &chunk, mode, word_index, sentence_index, 0);
+            word_index += chunk.split_whitespace().count().max(1);
+            sentence_index += 1;
+            chunk.clear();
+        }
+    }
+    if !chunk.trim().is_empty() {
+        push_phrase_unit(&mut units, &chunk, mode, word_index, sentence_index, 0);
+    }
+    units
+}
+
+fn speech_units_from_paragraphs(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit> {
+    let mut units = Vec::new();
+    let mut word_index = 0usize;
+    for (paragraph_index, para) in text.split("\n\n").enumerate() {
+        if para.trim().is_empty() {
+            continue;
+        }
+        push_phrase_unit(
+            &mut units,
+            para,
+            mode,
+            word_index,
+            paragraph_index,
+            paragraph_index,
+        );
+        word_index += para.split_whitespace().count().max(1);
+    }
+    units
+}
+
+fn push_phrase_unit(
+    units: &mut Vec<SpeechUnit>,
+    source: &str,
+    mode: SpeechInputMode,
+    word_index: usize,
+    sentence_index: usize,
+    paragraph_index: usize,
+) {
+    let trimmed = source.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let label = match mode {
+        SpeechInputMode::Sentence => "SENTENCE",
+        SpeechInputMode::Paragraph => "PARAGRAPH",
+        _ => "PHRASE",
+    };
+    let mut params = speech_phoneme_params(
+        approximate_phonemes(trimmed)
+            .first()
+            .map(|p| p.label.as_str())
+            .unwrap_or("AH"),
+    );
+    params.vowel_mul = (params.vowel_mul + 0.25).clamp(0.0, 1.0);
+    let words = trimmed.split_whitespace().count().max(1) as f64;
+    units.push(SpeechUnit {
+        label: label.to_string(),
+        source: trimmed.to_string(),
+        normalized_source: trimmed.to_string(),
+        kind: SpeechSymbolKind::Vowel,
+        duration_s: (0.16 + 0.055 * words).clamp(0.16, 1.4),
+        gap_s: if matches!(mode, SpeechInputMode::Paragraph) {
+            0.24
+        } else {
+            0.11
+        },
+        emphasis: speech_source_emphasis(trimmed),
+        params,
+        token_index: units.len(),
+        word_index,
+        sentence_index,
+        paragraph_index,
+        parse_rule: mode.as_str().to_string(),
+        parse_confidence: 0.68,
+    });
+}
+
 fn speech_units_from_characters(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit> {
     let mut units = Vec::new();
     let mut word_index = 0;
@@ -3451,15 +3848,19 @@ fn speech_units_from_characters(text: &str, mode: SpeechInputMode) -> Vec<Speech
         let label = ch.to_string();
         units.push(SpeechUnit {
             label: label.clone(),
-            source: label,
+            source: label.clone(),
+            normalized_source: label,
             kind,
             duration_s,
             gap_s,
             emphasis,
             params: speech_symbol_params(ch, kind),
+            token_index: units.len(),
             word_index,
             sentence_index,
             paragraph_index,
+            parse_rule: "literal-character".to_string(),
+            parse_confidence: 0.82,
         });
         match kind {
             SpeechSymbolKind::Whitespace => word_index += 1,
@@ -3494,21 +3895,27 @@ fn speech_units_from_tokens(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit
             return;
         }
         let source = token.clone();
-        for label in approximate_phonemes(token) {
+        let token_index = word_index;
+        for parsed in approximate_phonemes(token) {
+            let label = parsed.label;
             let kind = phoneme_kind(&label);
             let params = speech_phoneme_params(&label);
             let duration_s = speech_unit_duration_for_params(kind, mode, &label);
             units.push(SpeechUnit {
                 label,
                 source: source.clone(),
+                normalized_source: source.clone(),
                 kind,
                 duration_s,
                 gap_s: 0.004,
                 emphasis: speech_source_emphasis(&source),
                 params,
+                token_index,
                 word_index,
                 sentence_index,
                 paragraph_index,
+                parse_rule: parsed.rule,
+                parse_confidence: parsed.confidence,
             });
         }
         token.clear();
@@ -3526,14 +3933,18 @@ fn speech_units_from_tokens(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit
             units.push(SpeechUnit {
                 label: "PARA".to_string(),
                 source: "\n".to_string(),
+                normalized_source: "\n".to_string(),
                 kind: SpeechSymbolKind::ParagraphBreak,
                 duration_s: 0.0,
                 gap_s: speech_symbol_gap('\n', SpeechSymbolKind::ParagraphBreak, mode),
                 emphasis: 0.0,
                 params: speech_symbol_params('\n', SpeechSymbolKind::ParagraphBreak),
+                token_index: word_index,
                 word_index,
                 sentence_index,
                 paragraph_index,
+                parse_rule: "paragraph-break".to_string(),
+                parse_confidence: 1.0,
             });
             paragraph_index += 1;
             sentence_index += 1;
@@ -3549,14 +3960,18 @@ fn speech_units_from_tokens(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit
             units.push(SpeechUnit {
                 label: "SPACE".to_string(),
                 source: " ".to_string(),
+                normalized_source: " ".to_string(),
                 kind: SpeechSymbolKind::Whitespace,
                 duration_s: 0.0,
                 gap_s: speech_symbol_gap(' ', SpeechSymbolKind::Whitespace, mode),
                 emphasis: 0.0,
                 params: speech_symbol_params(' ', SpeechSymbolKind::Whitespace),
+                token_index: word_index,
                 word_index,
                 sentence_index,
                 paragraph_index,
+                parse_rule: "word-boundary".to_string(),
+                parse_confidence: 1.0,
             });
             word_index += 1;
         } else if matches!(classify_speech_symbol(ch), SpeechSymbolKind::Punctuation) {
@@ -3571,14 +3986,18 @@ fn speech_units_from_tokens(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit
             units.push(SpeechUnit {
                 label: ch.to_string(),
                 source: ch.to_string(),
+                normalized_source: ch.to_string(),
                 kind,
                 duration_s: speech_symbol_duration(ch, kind, mode),
                 gap_s: speech_symbol_gap(ch, kind, mode),
                 emphasis: speech_source_emphasis(ch.to_string().as_str()),
                 params: speech_symbol_params(ch, kind),
+                token_index: word_index,
                 word_index,
                 sentence_index,
                 paragraph_index,
+                parse_rule: "punctuation".to_string(),
+                parse_confidence: 1.0,
             });
             if matches!(ch, '.' | '!' | '?') {
                 sentence_index += 1;
@@ -3600,7 +4019,13 @@ fn speech_units_from_tokens(text: &str, mode: SpeechInputMode) -> Vec<SpeechUnit
     units
 }
 
-fn approximate_phonemes(word: &str) -> Vec<String> {
+struct ApproxPhoneme {
+    label: String,
+    rule: String,
+    confidence: f64,
+}
+
+fn approximate_phonemes(word: &str) -> Vec<ApproxPhoneme> {
     let upper = word.to_ascii_uppercase();
     if upper.is_empty() {
         return Vec::new();
@@ -3610,34 +4035,44 @@ fn approximate_phonemes(word: &str) -> Vec<String> {
     let mut out = Vec::new();
     while i < bytes.len() {
         let rem = &upper[i..];
-        let (step, label) = if rem.starts_with("TH") {
-            (2, "TH")
+        let (step, label, rule, confidence) = if rem.starts_with("TION") {
+            (4, "SH AH N", "suffix-tion", 0.78)
+        } else if rem.starts_with("SION") {
+            (4, "ZH AH N", "suffix-sion", 0.72)
+        } else if rem.starts_with("OUGH") {
+            (4, "AW", "english-ough-chaos", 0.44)
+        } else if rem.starts_with("TH") {
+            (2, "TH", "digraph-th", 0.88)
         } else if rem.starts_with("SH") {
-            (2, "SH")
+            (2, "SH", "digraph-sh", 0.9)
         } else if rem.starts_with("CH") {
-            (2, "CH")
+            (2, "CH", "digraph-ch", 0.86)
         } else if rem.starts_with("PH") {
-            (2, "F")
+            (2, "F", "digraph-ph", 0.86)
         } else if rem.starts_with("NG") {
-            (2, "NG")
+            (2, "NG", "digraph-ng", 0.88)
+        } else if rem.starts_with("CK") {
+            (2, "K", "digraph-ck", 0.9)
+        } else if rem.starts_with("WH") {
+            (2, "W HH", "digraph-wh", 0.7)
         } else if rem.starts_with("QU") {
-            (2, "KW")
+            (2, "K W", "digraph-qu", 0.84)
         } else if rem.starts_with("EE") {
-            (2, "IY")
+            (2, "IY", "vowel-ee", 0.88)
         } else if rem.starts_with("OO") {
-            (2, "UW")
+            (2, "UW", "vowel-oo", 0.76)
         } else if rem.starts_with("AI") || rem.starts_with("AY") {
-            (2, "EY")
+            (2, "EY", "vowel-ai-ay", 0.82)
         } else if rem.starts_with("OW") || rem.starts_with("OU") {
-            (2, "AW")
+            (2, "AW", "vowel-ow-ou", 0.7)
         } else if rem.starts_with("OI") || rem.starts_with("OY") {
-            (2, "OY")
+            (2, "OY", "vowel-oi-oy", 0.9)
         } else if rem.starts_with("AR") {
-            (2, "AR")
+            (2, "AR", "r-colored-ar", 0.86)
         } else if rem.starts_with("ER") || rem.starts_with("IR") || rem.starts_with("UR") {
-            (2, "ER")
+            (2, "ER", "r-colored-er", 0.82)
         } else if rem.starts_with("OR") {
-            (2, "OR")
+            (2, "OR", "r-colored-or", 0.82)
         } else {
             let ch = rem.chars().next().unwrap_or(' ');
             let label = match ch {
@@ -3669,19 +4104,14 @@ fn approximate_phonemes(word: &str) -> Vec<String> {
                 'Z' => "Z",
                 _ => "UH",
             };
-            (1, label)
+            (1, label, "letter-map", 0.62)
         };
         for sub in label.split_whitespace() {
-            out.push(sub.to_string());
-        }
-        if label == "KW" {
-            out.pop();
-            out.push("K".to_string());
-            out.push("W".to_string());
-        } else if label == "KS" {
-            out.pop();
-            out.push("K".to_string());
-            out.push("S".to_string());
+            out.push(ApproxPhoneme {
+                label: sub.to_string(),
+                rule: rule.to_string(),
+                confidence,
+            });
         }
         i += step;
     }
@@ -3971,6 +4401,97 @@ fn speech_phoneme_params(label: &str) -> SpeechSymbolParams {
             vowel_mul: 0.85,
         },
     }
+}
+
+fn speech_parse_diagnostics(
+    opts: &SpeechRenderOptions,
+    normalized_text: &str,
+    units: &[SpeechUnit],
+) -> SpeechParseDiagnostics {
+    let mut vowels = 0usize;
+    let mut consonants = 0usize;
+    let mut punctuation = 0usize;
+    let mut whitespace = 0usize;
+    let mut paragraphs = 1usize;
+    let mut rule_counts = std::collections::BTreeMap::<String, usize>::new();
+
+    for unit in units {
+        match unit.kind {
+            SpeechSymbolKind::Vowel => vowels += 1,
+            SpeechSymbolKind::Consonant => consonants += 1,
+            SpeechSymbolKind::Punctuation => punctuation += 1,
+            SpeechSymbolKind::Whitespace => whitespace += 1,
+            SpeechSymbolKind::ParagraphBreak => paragraphs += 1,
+            SpeechSymbolKind::Digit => {}
+        }
+        *rule_counts.entry(unit.parse_rule.clone()).or_insert(0) += 1;
+    }
+
+    let mut notes = Vec::new();
+    let raw = opts.text.replace("\r\n", "\n");
+    if raw != normalized_text {
+        notes.push("normalized punctuation, spacing, case, abbreviations, or numbers".to_string());
+    }
+    if raw.chars().any(|ch| ch.is_ascii_digit()) {
+        notes.push("expanded numeric glyphs into speakable tokens".to_string());
+    }
+    if raw.split_whitespace().any(|token| {
+        token.chars().any(|ch| ch.is_ascii_lowercase())
+            && token.chars().any(|ch| ch.is_ascii_uppercase())
+    }) {
+        notes.push("detected mixed-case token emphasis".to_string());
+    }
+    if notes.is_empty() {
+        notes.push("input already matched the speech parser's preferred shape".to_string());
+    }
+
+    SpeechParseDiagnostics {
+        normalized_text: normalized_text.to_string(),
+        input_mode: opts.input_mode.as_str().to_string(),
+        normalization_notes: notes,
+        normalized_changed: raw != normalized_text,
+        tokens: normalized_text.split_whitespace().count(),
+        phonemes: units.iter().filter(|unit| unit.kind.is_phoneme()).count(),
+        vowels,
+        consonants,
+        punctuation,
+        whitespace,
+        paragraphs,
+        sentences: normalized_text
+            .chars()
+            .filter(|ch| matches!(ch, '.' | '!' | '?'))
+            .count()
+            .max(1),
+        abbreviation_expansions: count_abbreviation_like(&raw),
+        number_expansions: raw
+            .split(|ch: char| !ch.is_ascii_digit())
+            .filter(|s| !s.is_empty())
+            .count(),
+        mixed_case_tokens: raw
+            .split_whitespace()
+            .filter(|token| {
+                token.chars().any(|ch| ch.is_ascii_lowercase())
+                    && token.chars().any(|ch| ch.is_ascii_uppercase())
+            })
+            .count(),
+        rules: rule_counts
+            .into_iter()
+            .map(|(rule, count)| SpeechParseRuleCount { rule, count })
+            .collect(),
+    }
+}
+
+fn count_abbreviation_like(text: &str) -> usize {
+    text.split_whitespace()
+        .filter(|token| {
+            let trimmed = token.trim_matches(|ch: char| !ch.is_ascii_alphabetic() && ch != '.');
+            trimmed.contains('.')
+                || matches!(
+                    trimmed.to_ascii_lowercase().as_str(),
+                    "dr" | "mr" | "mrs" | "ms" | "st" | "ok" | "vs"
+                )
+        })
+        .count()
 }
 
 fn seed_from_time() -> u64 {
@@ -4950,6 +5471,138 @@ fn speech_oscillator_sample(
                     + 0.28 * (2.0 * PI * formant2 * t).sin(),
             )
         }
+        SpeechOscillator::Glottal => {
+            let p = (freq * t).fract();
+            let open = (p / 0.62).clamp(0.0, 1.0).powf(0.55);
+            let close = ((1.0 - p) / 0.38).clamp(0.0, 1.0).powf(2.2);
+            soft_clip(open * close * 2.0 - 0.65)
+        }
+        SpeechOscillator::Aspiration => {
+            let breath = rng.gen_range(-1.0_f64..1.0_f64);
+            soft_clip(0.65 * breath + 0.25 * (2.0 * PI * formant1 * t).sin())
+        }
+        SpeechOscillator::NasalBuzz => soft_clip(
+            0.55 * saw(freq * 0.5, t)
+                + 0.35 * (2.0 * PI * (formant1 * 0.42).max(40.0) * t).sin()
+                + 0.18 * square(freq, t),
+        ),
+        SpeechOscillator::RoboticVocoder => {
+            let carrier = square((formant2 * 0.33).max(60.0), t);
+            let voice = if voiced {
+                saw(freq, t)
+            } else {
+                rng.gen_range(-1.0_f64..1.0_f64)
+            };
+            soft_clip(carrier * voice + 0.25 * (2.0 * PI * formant1 * t).sin())
+        }
+        SpeechOscillator::PlosiveBurst => {
+            if *phase < 0.08 {
+                rng.gen_range(-1.0_f64..1.0_f64) * (1.0 - *phase / 0.08)
+            } else {
+                0.12 * saw(freq, t)
+            }
+        }
+        SpeechOscillator::Whisper => soft_clip(
+            rng.gen_range(-1.0_f64..1.0_f64) * 0.82
+                + 0.12 * (2.0 * PI * formant1 * t).sin()
+                + 0.08 * (2.0 * PI * formant2 * t).sin(),
+        ),
+        SpeechOscillator::LpcPulse => {
+            let impulse = if *phase < 0.025 {
+                1.0 - *phase / 0.025
+            } else {
+                -0.05
+            };
+            soft_clip(impulse + 0.35 * (2.0 * PI * formant1 * t).sin())
+        }
+        SpeechOscillator::ArcadeDelta => {
+            let step =
+                ((saw(freq, t) * 8.0).round() / 8.0) - ((saw(freq * 0.5, t) * 4.0).round() / 4.0);
+            soft_clip(step + 0.22 * square(formant1.max(80.0), t))
+        }
+        SpeechOscillator::CasioFormant => soft_clip(
+            0.42 * square(freq, t)
+                + 0.34 * triangle(formant1.max(60.0), t)
+                + 0.24 * saw(formant2.max(90.0), t),
+        ),
+        SpeechOscillator::PhaseDistort => {
+            let phase_distort = (freq * t + chaos * (2.0 * PI * freq * t).sin() * 0.08).fract();
+            soft_clip((2.0 * PI * phase_distort).sin() + 0.3 * saw(formant1 * 0.5, t))
+        }
+    }
+}
+
+fn speech_excitation_sample(
+    excitation: SpeechExcitation,
+    pitch: f64,
+    formant1: f64,
+    formant2: f64,
+    phoneme: SpeechSymbolParams,
+    t: f64,
+    progress: f64,
+    opts: &SpeechRenderOptions,
+    tuning: &SpeechProfileTuning,
+    rng: &mut ChaCha8Rng,
+) -> f64 {
+    let family = if matches!(excitation, SpeechExcitation::Auto) {
+        if phoneme.noisy && progress < 0.12 {
+            SpeechExcitation::PlosiveClicks
+        } else if phoneme.noisy {
+            SpeechExcitation::Aspiration
+        } else if phoneme.formant1 < 340.0 {
+            SpeechExcitation::NasalDrone
+        } else {
+            SpeechExcitation::VoicedPulse
+        }
+    } else {
+        excitation
+    };
+
+    match family {
+        SpeechExcitation::Auto => 0.0,
+        SpeechExcitation::VoicedPulse => 0.16 * pulse(pitch, t, opts.duty_cycle),
+        SpeechExcitation::BuzzSaw => 0.12 * saw(pitch, t) + 0.08 * saw(pitch * 2.0, t),
+        SpeechExcitation::WhisperNoise => {
+            0.22 * opts.breathiness * rng.gen_range(-1.0_f64..1.0_f64)
+        }
+        SpeechExcitation::Aspiration => {
+            let hiss = rng.gen_range(-1.0_f64..1.0_f64);
+            0.18 * opts.breathiness * hiss * (0.5 + phoneme.brightness)
+        }
+        SpeechExcitation::NasalDrone => {
+            0.15 * (2.0 * PI * (formant1 * 0.42).max(40.0) * t).sin()
+                + 0.08 * saw((pitch * 0.5).max(25.0), t)
+        }
+        SpeechExcitation::RoboticCarrier => {
+            0.18 * square((tuning.robot_carrier_hz + formant2 * 0.05).max(80.0), t)
+        }
+        SpeechExcitation::PlosiveClicks => {
+            if progress < 0.06 {
+                opts.plosive_pop * (1.0 - progress / 0.06) * rng.gen_range(-1.0_f64..1.0_f64)
+            } else {
+                0.0
+            }
+        }
+        SpeechExcitation::DeltaStepper => {
+            let clock_ratio = (opts.chip_clock_hz / 1_000_000.0).clamp(0.2, 4.0);
+            0.14 * ((saw(pitch * clock_ratio, t) * 6.0).round() / 6.0)
+        }
+        SpeechExcitation::LpcImpulse => {
+            let phase = (pitch * t).fract();
+            if phase < 0.035 {
+                0.24 * (1.0 - phase / 0.035)
+            } else {
+                -0.015
+            }
+        }
+        SpeechExcitation::GlottalFry => {
+            0.18 * pulse((pitch * 0.42).max(18.0), t, 0.18) + 0.05 * saw(pitch, t)
+        }
+        SpeechExcitation::BrokenSampler => {
+            let held =
+                ((saw(pitch, t) * 12.0).round() / 12.0) + 0.15 * rng.gen_range(-1.0_f64..1.0_f64);
+            0.16 * soft_clip(held)
+        }
     }
 }
 
@@ -4985,6 +5638,18 @@ fn apply_speech_chip_fx(
         SpeechBackendKind::ArcadePcm => {
             let coarse = (crushed * 32.0).round() / 32.0;
             soft_clip(0.58 * crushed + 0.2 * folded + 0.22 * coarse)
+        }
+        SpeechBackendKind::DeltaModulation => {
+            let delta = (crushed - *held).clamp(-0.18, 0.18);
+            let stepped = ((*held + delta) * 24.0).round() / 24.0;
+            soft_clip(0.7 * stepped + 0.3 * folded)
+        }
+        SpeechBackendKind::KlattCascade => {
+            soft_clip(0.52 * crushed + 0.28 * (folded * 0.8).sin() + 0.2 * sample)
+        }
+        SpeechBackendKind::PsgFormant => {
+            let psg = if crushed >= 0.0 { 1.0 } else { -1.0 } * crushed.abs().sqrt();
+            soft_clip(0.5 * psg + 0.3 * folded + 0.2 * crushed)
         }
     };
     soft_clip(shaped)

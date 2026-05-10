@@ -1,7 +1,8 @@
 use std::fs;
 
 use hound::{SampleFormat, WavReader};
-use std::path::PathBuf;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,6 +18,10 @@ fn temp_dir(label: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("usg_cli_{label}_{now}"));
     fs::create_dir_all(&dir).expect("mkdir");
     dir
+}
+
+fn read_json(path: &Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).expect("json read")).expect("json parse")
 }
 
 #[test]
@@ -409,6 +414,205 @@ fn speech_defaults_to_192khz_float32_output() {
     assert_eq!(spec.sample_rate, 192_000);
     assert_eq!(spec.sample_format, SampleFormat::Float);
     assert_eq!(spec.bits_per_sample, 32);
+}
+
+#[test]
+fn speech_v05_help_exposes_deeper_voice_design_controls() {
+    let help = Command::new(bin())
+        .args(["speech", "--help"])
+        .output()
+        .expect("speech help");
+    assert!(help.status.success(), "speech --help failed");
+    let stdout = String::from_utf8_lossy(&help.stdout);
+
+    for expected in [
+        "--text-file",
+        "--input-mode",
+        "--no-normalize-text",
+        "--profile",
+        "--primary-osc",
+        "--secondary-osc",
+        "--tertiary-osc",
+        "--excitation",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "speech --help should expose {expected}; stdout was:\n{stdout}"
+        );
+    }
+
+    for expected in ["breathy", "robotic", "broken", "nasal", "voiced", "noisy"] {
+        assert!(
+            stdout.contains(expected),
+            "speech --help should describe excitation family {expected}; stdout was:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn speech_exports_v05_phoneme_timeline_and_analysis_contract() {
+    let dir = temp_dir("speech_v05_json");
+    let wav = dir.join("speech.wav");
+    let timeline_path = dir.join("speech.timeline.json");
+    let analysis_path = dir.join("speech.analysis.json");
+
+    let out = Command::new(bin())
+        .args([
+            "speech",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--text",
+            "Dr. Ada scored 42/100? OK!",
+            "--sample-rate",
+            "22050",
+            "--input-mode",
+            "auto",
+            "--profile",
+            "sp0256",
+            "--primary-osc",
+            "phoneme",
+            "--secondary-osc",
+            "grain",
+            "--tertiary-osc",
+            "comb",
+            "--timeline-json",
+            timeline_path.to_str().expect("timeline path"),
+            "--analysis-json",
+            analysis_path.to_str().expect("analysis path"),
+        ])
+        .output()
+        .expect("speech command");
+    assert!(
+        out.status.success(),
+        "speech failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let timeline = read_json(&timeline_path);
+    let entries = timeline
+        .as_array()
+        .or_else(|| timeline["entries"].as_array())
+        .expect("timeline entries");
+    assert!(!entries.is_empty(), "timeline should contain entries");
+
+    let phoneme = entries
+        .iter()
+        .find(|entry| entry["kind"].as_str() == Some("phoneme"))
+        .expect("timeline should include phoneme entries");
+    for field in [
+        "label",
+        "source",
+        "normalized_source",
+        "token_index",
+        "phoneme_index",
+        "start_s",
+        "end_s",
+        "duration_s",
+        "pitch_hz",
+        "formant1_hz",
+        "formant2_hz",
+        "voiced",
+        "noisy",
+        "oscillator_family",
+        "excitation_family",
+        "backend_kind",
+    ] {
+        assert!(
+            !phoneme[field].is_null(),
+            "phoneme timeline entry should expose {field}: {phoneme:#}"
+        );
+    }
+
+    let analysis = read_json(&analysis_path);
+    let diagnostics = timeline["diagnostics"]
+        .as_object()
+        .or_else(|| analysis["phoneme_diagnostics"].as_object())
+        .expect("speech exports should include token-to-phoneme diagnostics");
+    for field in [
+        "normalized_text",
+        "tokens",
+        "phonemes",
+        "input_mode",
+        "normalization_notes",
+    ] {
+        assert!(
+            diagnostics.contains_key(field),
+            "phoneme diagnostics should include {field}: {diagnostics:#?}"
+        );
+    }
+
+    assert!(
+        analysis["summary"]["normalized_text"].is_string(),
+        "analysis json should include normalized text in summary: {analysis:#}"
+    );
+    assert!(
+        analysis["summary"]["backend_kind"].is_string(),
+        "analysis json should include speech backend metadata: {analysis:#}"
+    );
+    assert!(
+        analysis["intelligibility"]["intelligibility_index"].is_number(),
+        "analysis json should include intelligibility scoring: {analysis:#}"
+    );
+    assert!(
+        analysis["speech_design"]["oscillators"].is_object()
+            && analysis["speech_design"]["excitation"].is_object(),
+        "analysis json should include speech design oscillator/excitation metadata: {analysis:#}"
+    );
+}
+
+#[test]
+fn speech_text_file_and_input_modes_report_distinct_segmentation() {
+    let dir = temp_dir("speech_v05_modes");
+    let text_path = dir.join("input.txt");
+    fs::write(&text_path, "ONE word.\n\nSECOND paragraph.").expect("write text file");
+
+    let mut observed_units = Vec::new();
+    for mode in ["character", "word", "sentence", "paragraph"] {
+        let wav = dir.join(format!("{mode}.wav"));
+        let analysis_path = dir.join(format!("{mode}.analysis.json"));
+        let out = Command::new(bin())
+            .args([
+                "speech",
+                "--output",
+                wav.to_str().expect("wav path"),
+                "--text-file",
+                text_path.to_str().expect("text path"),
+                "--sample-rate",
+                "22050",
+                "--input-mode",
+                mode,
+                "--analysis-json",
+                analysis_path.to_str().expect("analysis path"),
+            ])
+            .output()
+            .expect("speech mode command");
+        assert!(
+            out.status.success(),
+            "speech --input-mode {mode} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let analysis = read_json(&analysis_path);
+        let reported_mode = analysis["summary"]["input_mode"]
+            .as_str()
+            .expect("summary input_mode");
+        assert!(
+            reported_mode.eq_ignore_ascii_case(mode),
+            "analysis should record requested input mode {mode}: {analysis:#}"
+        );
+        observed_units.push(
+            analysis["summary"]["units_rendered"]
+                .as_u64()
+                .expect("units_rendered"),
+        );
+    }
+
+    observed_units.sort_unstable();
+    observed_units.dedup();
+    assert!(
+        observed_units.len() >= 3,
+        "letter/word/sentence/paragraph modes should produce meaningfully different segmentation"
+    );
 }
 
 #[test]

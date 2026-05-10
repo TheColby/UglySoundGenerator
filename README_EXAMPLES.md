@@ -323,6 +323,19 @@ Unless a row says otherwise, renders default to 32-bit float at 192 kHz and norm
 
 ## Speech Grid
 
+The current corpus covers 36 short speech renders across six chip profiles and six primary oscillators. The wider v0.5 speech CLI supports 12 chip profiles, 34 oscillators, 12 excitation families, three oscillator slots, text normalization, `--input-mode auto|character|word|sentence|paragraph`, parser diagnostics through `--timeline-json`, and metadata/analysis export through `--analysis-json`.
+
+Use `speech-pack` for a full profile comparison outside the fixed corpus:
+
+```bash
+./target/debug/usg speech-pack \
+  --text "UGLY SOUND GENERATOR 404" \
+  --rank-by balanced \
+  --out-dir out/speech-pack
+```
+
+That writes one WAV per chip profile plus `summary.json`, `ranking.csv`, and `report.html`, with ranking modes for `ugliness`, `intelligibility`, or `balanced`.
+
 | File | Command | Notes |
 | --- | --- | --- |
 | `examples/audio/297_speech_votrax-sc01_pulse.wav` | `./target/debug/usg speech --text UGLY votrax-sc01 pulse --profile votrax-sc01 --primary-osc pulse --output examples/audio/297_speech_votrax-sc01_pulse.wav` | Speech-chip render using votrax-sc01 with pulse as the primary oscillator. |

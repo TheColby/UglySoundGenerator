@@ -12,10 +12,10 @@ The next milestones focus on making those surfaces deeper, more reproducible, an
 
 ## Current Baseline
 
-As of `v0.4.0`, USG already includes:
+As of the current `v0.5` docs slice, USG already includes:
 
 - `render`, `piece`, `chain`, `go`, and `analyze` as the main product surface
-- speech synthesis with chip-inspired profiles, phoneme timelines, and analysis export
+- speech synthesis with chip-inspired profiles, profile-specific backend models, phoneme timelines, text normalization, and analysis export
 - seeded reproducibility and controlled randomness knobs
 - timeline and JSON analysis outputs
 - contour-driven `go` processing and multichannel upmix workflows
@@ -43,15 +43,23 @@ Planned work:
 
 Goal: move from broad chip-speech variety toward more convincing and controllable speech design.
 
-Planned work:
+Current surface:
 
-- stronger text normalization for numbers, punctuation, abbreviations, and mixed-case tokens
-- a better approximate phoneme parser with clearer token-to-phoneme diagnostics
-- more chip-specific backends modeled after classic speech IC behavior
-- more oscillator and excitation families for voiced, noisy, nasal, breathy, robotic, and broken speech
-- phrase controls tuned separately for letters, words, sentences, and paragraphs
-- better speech-pack ranking between intelligibility and ugliness, with clearer tradeoff reporting
-- presets and recipe packs for specific eras, chips, and “wrong but useful” historical misbehaviors
+- text normalization is on by default for `speech`: curly quotes/dashes are simplified, whitespace is collapsed, digits become spoken words, and mixed-case text is uppercased before parsing; `--no-normalize-text` preserves raw input apart from line-ending cleanup
+- the approximate parser now exposes diagnostics through `--timeline-json`: each rendered unit records source token, phoneme label, kind, timing, gap, emphasis, pitch, formants, voicing/noise flags, and active speech backend
+- chip profiles are routed through chip-specific backend families: `lpc`, `formant-grid`, `sam-vocal-tract`, `arcade-pcm`, `delta-modulation`, `klatt-cascade`, and `psg-formant`
+- twelve current profiles are available: `votrax-sc01`, `tms5220`, `sp0256`, `mea8000`, `s14001a`, `c64-sam`, `arcadey90s`, `handheld-lcd`, `speak-and-spell`, `macintalk`, `yamaha-psg`, and `amiga-narrator`
+- three oscillator slots can be mixed per render with 34 oscillators plus 12 excitation families, covering tonal, noisy, nasal/formant, robotic, fractal, granular, and broken digital sources
+- input tuning is explicit with `--input-mode auto|character|word|sentence|paragraph`, `--units-per-second`, word/sentence/paragraph gap controls, word accent, sentence lilt, paragraph decline, emphasis, attack, and release
+- `speech-pack` renders every chip profile, analyzes each result, computes an intelligibility index, and ranks by `ugliness`, `intelligibility`, or `balanced`
+- speech exports include WAV plus optional `--analysis-json` and `--timeline-json`; speech-pack writes JSON, CSV, and HTML reports
+
+Still useful follow-up:
+
+- add curated speech recipe metadata for specific eras, chips, and "wrong but useful" historical misbehaviors
+- expand normalization beyond the current digit/case/punctuation cleanup into abbreviation-aware phrasing
+- make phoneme diagnostics easier to read directly in terminal output, not only timeline JSON
+- expose reusable speech preset discovery through `usg presets` once the data format settles
 
 ### `v0.6`: Analysis, Search, And Explanation
 
@@ -111,7 +119,7 @@ That means future work should keep balancing spectacle with clarity: more range,
 If we want the highest-payoff next step, it should be:
 
 1. make `piece` more musical at the macro level with sections, ramps, rests, and return points
-2. make speech more controllable at the micro level with stronger phoneme and timing diagnostics
+2. make speech more preset-driven at the recipe level with curated chip/era packs and terminal-friendly phoneme diagnostics
 3. make analysis explain itself better so users can connect what they hear to what USG measured
 
 That sequence keeps the repo balanced between instrument, composition tool, and research toy.
@@ -121,7 +129,7 @@ That sequence keeps the repo balanced between instrument, composition tool, and 
 ```mermaid
 flowchart TD
   A["v0.4.0 baseline with piece and speech"] --> B["v0.4.x composition and randomness"]
-  B --> C["v0.5 deeper chip speech"]
+  B --> C["v0.5 deeper chip speech surface"]
   C --> D["v0.6 analysis and explanation"]
   D --> E["modular research-grade ugliness lab"]
 ```

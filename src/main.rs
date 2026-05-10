@@ -14,10 +14,10 @@ use usg::{
     AnalysisReport, AnalyzeModel, AnalyzeOptions, COLBYS_MAX, COLBYS_MIN, ChainStage, CoordSystem,
     DEFAULT_GPU_CRUSH_BITS, DEFAULT_GPU_CRUSH_MIX, DEFAULT_GPU_DRIVE, GoFlavor, OutputEncoding,
     PieceEventPlan, PieceOptions, PieceSpatialRegion, RenderBackend, RenderEngine, RenderOptions,
-    SpatialGoOptions, SpeechChipProfile, SpeechInputMode, SpeechIntelligibility, SpeechOscillator,
-    SpeechRenderOptions, Style, SurroundLayout, TimelineOptions, Trajectory, UglinessContour,
-    analyze_wav_timeline, analyze_wav_with_options, available_effects, available_styles,
-    backend_capabilities, backend_status_report, default_jobs,
+    SpatialGoOptions, SpeechChipProfile, SpeechExcitation, SpeechInputMode, SpeechIntelligibility,
+    SpeechOscillator, SpeechRenderOptions, Style, SurroundLayout, TimelineOptions, Trajectory,
+    UglinessContour, analyze_wav_timeline, analyze_wav_with_options, available_effects,
+    available_styles, backend_capabilities, backend_status_report, default_jobs,
     go_ugly_file_with_engine_contour_encoding, go_ugly_upmix_file_with_engine_contour_encoding,
     parse_chain_stage, point_to_xyz, render_chain_to_wav_with_engine,
     render_piece_to_wav_with_engine_progress, render_speech_with_artifacts_to_wav_with_engine,
@@ -282,6 +282,10 @@ struct SpeechArgs {
     #[arg(long, value_enum, default_value_t = SpeechOscillatorArg::Koch)]
     tertiary_osc: SpeechOscillatorArg,
 
+    /// Excitation family: voiced, noisy, nasal, breathy, robotic, or broken.
+    #[arg(long, value_enum, default_value_t = SpeechExcitationArg::Auto)]
+    excitation: SpeechExcitationArg,
+
     /// Output sample rate in Hz.
     #[arg(short = 'r', long, default_value_t = 192_000)]
     sample_rate: u32,
@@ -432,6 +436,38 @@ struct SpeechArgs {
     /// Sample-and-hold / resampler grime mix.
     #[arg(long, default_value_t = 0.25)]
     resampler_grit: f64,
+
+    /// Breathy aspiration layer for vowel and fricative speech.
+    #[arg(long, default_value_t = 0.12)]
+    breathiness: f64,
+
+    /// Plosive pop amount for hard consonant attacks.
+    #[arg(long, default_value_t = 0.18)]
+    plosive_pop: f64,
+
+    /// Sibilant high-noise emphasis for noisy phonemes.
+    #[arg(long, default_value_t = 0.24)]
+    sibilance: f64,
+
+    /// Nasal leakage/resonance mixed under voiced sounds.
+    #[arg(long, default_value_t = 0.12)]
+    nasal_leak: f64,
+
+    /// Nominal speech-chip clock rate used by chip-specific coloration.
+    #[arg(long, default_value_t = 1_000_000.0)]
+    chip_clock_hz: f64,
+
+    /// Slur adjacent phoneme timing and formant motion.
+    #[arg(long, default_value_t = 0.08)]
+    phoneme_slur: f64,
+
+    /// Coarticulation amount between neighboring phoneme targets.
+    #[arg(long, default_value_t = 0.18)]
+    coarticulation: f64,
+
+    /// Alternating phrase timing swing for word/sentence/paragraph input.
+    #[arg(long, default_value_t = 0.0)]
+    phrase_swing: f64,
 
     /// Output gain (0.0..1.0).
     #[arg(long, default_value_t = 0.85)]
@@ -1319,6 +1355,10 @@ enum SpeechChipProfileArg {
     C64Sam,
     Arcadey90s,
     HandheldLcd,
+    SpeakAndSpell,
+    Macintalk,
+    YamahaPsg,
+    AmigaNarrator,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -1347,6 +1387,32 @@ enum SpeechOscillatorArg {
     Mandelbrot,
     Strange,
     Phoneme,
+    Glottal,
+    Aspiration,
+    NasalBuzz,
+    RoboticVocoder,
+    PlosiveBurst,
+    Whisper,
+    LpcPulse,
+    ArcadeDelta,
+    CasioFormant,
+    PhaseDistort,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SpeechExcitationArg {
+    Auto,
+    VoicedPulse,
+    BuzzSaw,
+    WhisperNoise,
+    Aspiration,
+    NasalDrone,
+    RoboticCarrier,
+    PlosiveClicks,
+    DeltaStepper,
+    LpcImpulse,
+    GlottalFry,
+    BrokenSampler,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -1463,6 +1529,10 @@ impl From<SpeechChipProfileArg> for SpeechChipProfile {
             SpeechChipProfileArg::C64Sam => SpeechChipProfile::C64Sam,
             SpeechChipProfileArg::Arcadey90s => SpeechChipProfile::Arcadey90s,
             SpeechChipProfileArg::HandheldLcd => SpeechChipProfile::HandheldLcd,
+            SpeechChipProfileArg::SpeakAndSpell => SpeechChipProfile::SpeakAndSpell,
+            SpeechChipProfileArg::Macintalk => SpeechChipProfile::Macintalk,
+            SpeechChipProfileArg::YamahaPsg => SpeechChipProfile::YamahaPsg,
+            SpeechChipProfileArg::AmigaNarrator => SpeechChipProfile::AmigaNarrator,
         }
     }
 }
@@ -1494,6 +1564,35 @@ impl From<SpeechOscillatorArg> for SpeechOscillator {
             SpeechOscillatorArg::Mandelbrot => SpeechOscillator::Mandelbrot,
             SpeechOscillatorArg::Strange => SpeechOscillator::Strange,
             SpeechOscillatorArg::Phoneme => SpeechOscillator::Phoneme,
+            SpeechOscillatorArg::Glottal => SpeechOscillator::Glottal,
+            SpeechOscillatorArg::Aspiration => SpeechOscillator::Aspiration,
+            SpeechOscillatorArg::NasalBuzz => SpeechOscillator::NasalBuzz,
+            SpeechOscillatorArg::RoboticVocoder => SpeechOscillator::RoboticVocoder,
+            SpeechOscillatorArg::PlosiveBurst => SpeechOscillator::PlosiveBurst,
+            SpeechOscillatorArg::Whisper => SpeechOscillator::Whisper,
+            SpeechOscillatorArg::LpcPulse => SpeechOscillator::LpcPulse,
+            SpeechOscillatorArg::ArcadeDelta => SpeechOscillator::ArcadeDelta,
+            SpeechOscillatorArg::CasioFormant => SpeechOscillator::CasioFormant,
+            SpeechOscillatorArg::PhaseDistort => SpeechOscillator::PhaseDistort,
+        }
+    }
+}
+
+impl From<SpeechExcitationArg> for SpeechExcitation {
+    fn from(value: SpeechExcitationArg) -> Self {
+        match value {
+            SpeechExcitationArg::Auto => SpeechExcitation::Auto,
+            SpeechExcitationArg::VoicedPulse => SpeechExcitation::VoicedPulse,
+            SpeechExcitationArg::BuzzSaw => SpeechExcitation::BuzzSaw,
+            SpeechExcitationArg::WhisperNoise => SpeechExcitation::WhisperNoise,
+            SpeechExcitationArg::Aspiration => SpeechExcitation::Aspiration,
+            SpeechExcitationArg::NasalDrone => SpeechExcitation::NasalDrone,
+            SpeechExcitationArg::RoboticCarrier => SpeechExcitation::RoboticCarrier,
+            SpeechExcitationArg::PlosiveClicks => SpeechExcitation::PlosiveClicks,
+            SpeechExcitationArg::DeltaStepper => SpeechExcitation::DeltaStepper,
+            SpeechExcitationArg::LpcImpulse => SpeechExcitation::LpcImpulse,
+            SpeechExcitationArg::GlottalFry => SpeechExcitation::GlottalFry,
+            SpeechExcitationArg::BrokenSampler => SpeechExcitation::BrokenSampler,
         }
     }
 }
@@ -2136,6 +2235,28 @@ struct SpeechPackRankingEntry {
     rank_score: f64,
     basic_colbys: f64,
     seed: u64,
+    tradeoff: SpeechPackTradeoffRow,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SpeechPackTradeoffRow {
+    colbys: f64,
+    intelligibility_index: f64,
+    rank_score: f64,
+    ugliness_contribution: f64,
+    intelligibility_contribution: f64,
+    explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SpeechPackTradeoffReport {
+    rank_by: String,
+    ugliness_metric: String,
+    intelligibility_metric: String,
+    ugliness_weight: f64,
+    intelligibility_weight: f64,
+    rank_formula: String,
+    summary: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2150,17 +2271,61 @@ struct SpeechPackSummary {
     jobs: usize,
     base_seed: u64,
     profiles_rendered: usize,
+    tradeoff_report: SpeechPackTradeoffReport,
     entries: Vec<SpeechPackEntry>,
     ranking: Vec<SpeechPackRankingEntry>,
 }
 
 fn speech_pack_rank_score(entry: &SpeechPackEntry, rank_by: SpeechPackRankArg) -> f64 {
+    let (ugly_weight, intel_weight) = speech_pack_tradeoff_weights(rank_by);
+    ugly_weight * entry.colbys + intel_weight * entry.intelligibility.intelligibility_index
+}
+
+fn speech_pack_tradeoff_weights(rank_by: SpeechPackRankArg) -> (f64, f64) {
     match rank_by {
-        SpeechPackRankArg::Ugliness => entry.colbys,
-        SpeechPackRankArg::Intelligibility => entry.intelligibility.intelligibility_index,
-        SpeechPackRankArg::Balanced => {
-            0.65 * entry.colbys + 0.35 * entry.intelligibility.intelligibility_index
-        }
+        SpeechPackRankArg::Ugliness => (1.0, 0.0),
+        SpeechPackRankArg::Intelligibility => (0.0, 1.0),
+        SpeechPackRankArg::Balanced => (0.65, 0.35),
+    }
+}
+
+fn speech_pack_tradeoff_row(
+    entry: &SpeechPackEntry,
+    rank_by: SpeechPackRankArg,
+) -> SpeechPackTradeoffRow {
+    let (ugly_weight, intel_weight) = speech_pack_tradeoff_weights(rank_by);
+    let ugliness_contribution = ugly_weight * entry.colbys;
+    let intelligibility_contribution = intel_weight * entry.intelligibility.intelligibility_index;
+    let rank_score = ugliness_contribution + intelligibility_contribution;
+    SpeechPackTradeoffRow {
+        colbys: entry.colbys,
+        intelligibility_index: entry.intelligibility.intelligibility_index,
+        rank_score,
+        ugliness_contribution,
+        intelligibility_contribution,
+        explanation: format!(
+            "{:.0}% ugliness + {:.0}% intelligibility",
+            ugly_weight * 100.0,
+            intel_weight * 100.0
+        ),
+    }
+}
+
+fn speech_pack_tradeoff_report(
+    rank_by: SpeechPackRankArg,
+    rank_by_name: &str,
+) -> SpeechPackTradeoffReport {
+    let (ugly_weight, intel_weight) = speech_pack_tradeoff_weights(rank_by);
+    SpeechPackTradeoffReport {
+        rank_by: rank_by_name.to_string(),
+        ugliness_metric: "Colbys (-1000..1000)".to_string(),
+        intelligibility_metric: "speech intelligibility index (0..1000)".to_string(),
+        ugliness_weight: ugly_weight,
+        intelligibility_weight: intel_weight,
+        rank_formula: format!(
+            "rank_score = {ugly_weight:.2} * colbys + {intel_weight:.2} * intelligibility_index"
+        ),
+        summary: "Higher rank scores favor the selected blend of perceptual ugliness and decoded speech clarity.".to_string(),
     }
 }
 

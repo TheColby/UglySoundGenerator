@@ -9,7 +9,7 @@ It is best understood as **three core tools** with a few power-user satellites:
 - `chain`: route a render or preset pipeline through multiple stages
 - `analyze`: measure the result in **Colbys**
 
-Advanced tools such as `go`, `mutate`, `normalize-pack`, `evolve`, and `speech` build on those three surfaces rather than replacing them.
+Advanced tools such as `go`, `mutate`, `normalize-pack`, `evolve`, `speech`, and `speech-pack` build on those three surfaces rather than replacing them.
 
 ## Quickstart
 
@@ -42,6 +42,18 @@ Build a chain:
 
 ```bash
 cargo run -- chain --stages style:glitch,stutter,pop --duration 3.0 --output out/chain.wav
+```
+
+Render chip-speech with parser/timeline exports:
+
+```bash
+cargo run -- speech \
+  --text "WARNING 404. EVACUATE?" \
+  --profile tms5220 \
+  --input-mode sentence \
+  --analysis-json out/warning.analysis.json \
+  --timeline-json out/warning.timeline.json \
+  --output out/warning_speech.wav
 ```
 
 Render a stereo ugly piece made of many short sounds:
@@ -77,6 +89,14 @@ The repo has a lot in it, so the intended hierarchy matters:
 
 If you are new to the project, start with the first two layers and ignore the rest until you need them.
 
+## Speech Surface
+
+The v0.5 speech system is a power-user surface for ugly but inspectable chip speech. `speech` accepts inline text or a UTF-8 text file, normalizes text by default, parses it into character/word/sentence/paragraph units, and can export both psychoacoustic analysis JSON and a phoneme timeline JSON for parser diagnostics.
+
+Current speech profiles are `votrax-sc01`, `tms5220`, `sp0256`, `mea8000`, `s14001a`, `c64-sam`, `arcadey90s`, `handheld-lcd`, `speak-and-spell`, `macintalk`, `yamaha-psg`, and `amiga-narrator`. Profiles map to chip-specific backend families (`lpc`, `formant-grid`, `sam-vocal-tract`, `arcade-pcm`, `delta-modulation`, `klatt-cascade`, or `psg-formant`) and can be combined with three oscillator slots selected from 34 oscillator choices plus 12 excitation families.
+
+Use `speech-pack` when you want to compare every profile for the same text. It renders one WAV per profile, analyzes each one, computes an intelligibility index, and writes JSON, CSV, and HTML reports ranked by `ugliness`, `intelligibility`, or `balanced`.
+
 ## Command Map
 
 | Area | What it does | Primary doc |
@@ -85,6 +105,7 @@ If you are new to the project, start with the first two layers and ignore the re
 | Chaining | Route synthesis/effects through multiple stages | [docs/COMMANDS.md](docs/COMMANDS.md) |
 | Analysis | Measure ugliness and psychoacoustic features | [docs/METRICS.md](docs/METRICS.md) |
 | Psychoacoustics | Equations, assumptions, references, joke metric | [docs/PSYCHOACOUSTICS.md](docs/PSYCHOACOUSTICS.md) |
+| Speech | Chip profiles, phoneme timelines, intelligibility-vs-ugliness packs | [docs/COMMANDS.md](docs/COMMANDS.md) |
 | Roadmap | Planned milestones and direction of travel | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Example corpus | 333 reproducible WAV examples | [README_EXAMPLES.md](README_EXAMPLES.md) |
 

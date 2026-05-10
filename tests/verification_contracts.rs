@@ -435,19 +435,24 @@ fn speech_pack_summary_has_unique_profiles_and_sorted_ranking() {
         serde_json::from_str(&fs::read_to_string(&summary_path).expect("summary read"))
             .expect("summary json");
 
-    assert_eq!(
-        summary["profiles_rendered"]
-            .as_u64()
-            .expect("profiles_rendered"),
-        8
+    let profiles_rendered = summary["profiles_rendered"]
+        .as_u64()
+        .expect("profiles_rendered") as usize;
+    assert!(
+        profiles_rendered > 8,
+        "v0.5 speech packs should include additional chip profiles beyond the v0.4 baseline"
     );
 
     let entries = summary["entries"].as_array().expect("entries");
     let ranking = summary["ranking"].as_array().expect("ranking");
-    assert_eq!(entries.len(), 8, "expected one entry per speech profile");
+    assert_eq!(
+        entries.len(),
+        profiles_rendered,
+        "expected one entry per speech profile"
+    );
     assert_eq!(
         ranking.len(),
-        8,
+        profiles_rendered,
         "expected one ranking row per speech profile"
     );
 
@@ -470,6 +475,91 @@ fn speech_pack_summary_has_unique_profiles_and_sorted_ranking() {
             "rank_score should be sorted descending"
         );
         prev_score = score;
+    }
+}
+
+#[test]
+fn speech_pack_reports_intelligibility_vs_ugliness_tradeoffs() {
+    let dir = temp_dir("speech_pack_tradeoff_contract");
+    let out_dir = dir.join("speech_pack");
+
+    run_ok(&[
+        "speech-pack",
+        "--text",
+        "CLEAR WORDS SHOULD FIGHT THE BEAUTIFUL AWFUL MACHINE",
+        "--out-dir",
+        out_dir.to_str().expect("out dir"),
+        "--sample-rate",
+        "22050",
+        "--rank-by",
+        "balanced",
+        "--top",
+        "3",
+    ]);
+
+    let summary_path = out_dir.join("summary.json");
+    let summary: Value =
+        serde_json::from_str(&fs::read_to_string(&summary_path).expect("summary read"))
+            .expect("summary json");
+
+    let report = summary["tradeoff_report"]
+        .as_object()
+        .expect("summary should include a speech-pack tradeoff_report");
+    for field in [
+        "rank_by",
+        "ugliness_metric",
+        "intelligibility_metric",
+        "ugliness_weight",
+        "intelligibility_weight",
+        "rank_formula",
+        "summary",
+    ] {
+        assert!(
+            report.contains_key(field),
+            "tradeoff_report should include {field}: {report:#?}"
+        );
+    }
+    let ugly_weight = report["ugliness_weight"].as_f64().expect("ugliness_weight");
+    let intel_weight = report["intelligibility_weight"]
+        .as_f64()
+        .expect("intelligibility_weight");
+    assert!(
+        (ugly_weight + intel_weight - 1.0).abs() < 1e-6,
+        "balanced tradeoff weights should sum to 1.0"
+    );
+
+    let ranking = summary["ranking"].as_array().expect("ranking");
+    assert!(!ranking.is_empty(), "ranking should not be empty");
+    for row in ranking {
+        let tradeoff = row["tradeoff"]
+            .as_object()
+            .expect("ranking rows should explain their tradeoff");
+        for field in [
+            "colbys",
+            "intelligibility_index",
+            "rank_score",
+            "ugliness_contribution",
+            "intelligibility_contribution",
+            "explanation",
+        ] {
+            assert!(
+                tradeoff.contains_key(field),
+                "ranking tradeoff should include {field}: {tradeoff:#?}"
+            );
+        }
+
+        let colbys = tradeoff["colbys"].as_f64().expect("colbys");
+        let intelligibility = tradeoff["intelligibility_index"]
+            .as_f64()
+            .expect("intelligibility_index");
+        assert!(
+            (-1000.0..=1000.0).contains(&colbys),
+            "tradeoff colbys should stay bounded"
+        );
+        assert!(
+            (0.0..=1000.0).contains(&intelligibility),
+            "tradeoff intelligibility should be reported on a 0..1000 scale"
+        );
     }
 }
 

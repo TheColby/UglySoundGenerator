@@ -393,6 +393,7 @@ pub(super) fn speech(args: SpeechArgs) -> Result<()> {
         primary_osc: args.primary_osc.into(),
         secondary_osc: args.secondary_osc.into(),
         tertiary_osc: args.tertiary_osc.into(),
+        excitation: args.excitation.into(),
         gain: args.gain,
         normalize: !args.no_normalize,
         normalize_dbfs: args.normalize_dbfs,
@@ -431,6 +432,14 @@ pub(super) fn speech(args: SpeechArgs) -> Result<()> {
         throat: args.throat,
         drift: args.drift,
         resampler_grit: args.resampler_grit,
+        breathiness: args.breathiness,
+        plosive_pop: args.plosive_pop,
+        sibilance: args.sibilance,
+        nasal_leak: args.nasal_leak,
+        chip_clock_hz: args.chip_clock_hz,
+        phoneme_slur: args.phoneme_slur,
+        coarticulation: args.coarticulation,
+        phrase_swing: args.phrase_swing,
     };
     let opts = randomize_speech_options(opts, randomness);
     let artifacts = render_speech_with_artifacts_to_wav_with_engine(&args.output, &opts, &engine)?;
@@ -466,6 +475,26 @@ pub(super) fn speech(args: SpeechArgs) -> Result<()> {
             "summary": &summary,
             "analysis": analysis,
             "intelligibility": score_speech_intelligibility(&summary, &artifacts.timeline),
+            "phoneme_diagnostics": &summary.phoneme_diagnostics,
+            "speech_design": {
+                "oscillators": {
+                    "primary": opts.primary_osc.as_str(),
+                    "secondary": opts.secondary_osc.as_str(),
+                    "tertiary": opts.tertiary_osc.as_str(),
+                },
+                "excitation": {
+                    "family": opts.excitation.as_str(),
+                    "breathiness": opts.breathiness,
+                    "plosive_pop": opts.plosive_pop,
+                    "sibilance": opts.sibilance,
+                    "nasal_leak": opts.nasal_leak,
+                },
+                "chip": {
+                    "profile": summary.chip_profile.as_str(),
+                    "backend": summary.backend_kind.as_str(),
+                    "clock_hz": opts.chip_clock_hz,
+                }
+            },
         });
         write_json(path, &payload)
             .with_context(|| format!("failed to write {}", path.display()))?;
@@ -725,6 +754,7 @@ pub(super) fn speech_pack(args: SpeechPackArgs) -> Result<()> {
         .iter()
         .enumerate()
         .map(|(i, e)| SpeechPackRankingEntry {
+            tradeoff: speech_pack_tradeoff_row(e, args.rank_by),
             rank: i + 1,
             profile: e.profile.clone(),
             output: e.output.clone(),
@@ -747,6 +777,7 @@ pub(super) fn speech_pack(args: SpeechPackArgs) -> Result<()> {
         jobs: plan.jobs,
         base_seed,
         profiles_rendered: entries.len(),
+        tradeoff_report: speech_pack_tradeoff_report(args.rank_by, rank_by),
         entries,
         ranking,
     };
