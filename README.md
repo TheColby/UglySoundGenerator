@@ -177,7 +177,21 @@ Install from this checkout:
 ./scripts/install.sh
 ```
 
-The installer writes `usg` to `${PREFIX:-$HOME/.local}/bin`; set `PREFIX=/usr/local` or `FEATURES=metal` if you want a different install root or feature set.
+The installer uses `cargo install --locked --path . --root "$PREFIX"` and writes `usg` to `${PREFIX:-$HOME/.local}/bin`.
+
+Useful install variants:
+
+```bash
+PREFIX=/usr/local ./scripts/install.sh
+FEATURES=metal ./scripts/install.sh
+PROFILE=dev ./scripts/install.sh
+```
+
+If `$HOME/.local/bin` is not already on your shell path:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 Run focused demos:
 
@@ -194,11 +208,26 @@ Or run all of them:
 ./scripts/run_demos.sh
 ```
 
+Demo scripts default to `out/demos`; set `OUT_DIR=/path/to/output` to redirect them. They use `cargo run --quiet --` by default, or you can point them at an installed binary:
+
+```bash
+USG_BIN=usg ./scripts/run_demos.sh
+OUT_DIR=/tmp/usg-demos ./scripts/demo_piece_trajectory.sh
+```
+
 Homebrew users can install the current `main` branch from the bundled formula:
 
 ```bash
 brew install --HEAD ./packaging/homebrew/usg.rb
 ```
+
+Formula maintenance lives in the repo too:
+
+```bash
+./scripts/refresh_homebrew_formula.sh
+```
+
+That helper validates Ruby syntax everywhere and runs `brew audit --strict --online` when the local Homebrew/Xcode environment supports it.
 
 ## Verification
 
