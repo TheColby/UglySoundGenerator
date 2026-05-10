@@ -62,6 +62,12 @@ Render a stereo ugly piece made of many short sounds:
 cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
 ```
 
+Render a one-minute piece that follows a rising ugliness trajectory:
+
+```bash
+cargo run -- piece --output out/rising_ugliness.wav --duration 60 --layout stereo --scene arcade-collapse --ugliness-trajectory-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"colbys":-700},{"t":0.5,"colbys":150},{"t":1.0,"colbys":950}]}' --manifest out/rising_ugliness.manifest.json --seed 43003
+```
+
 Render an Atmos-style piece with height channels:
 
 ```bash

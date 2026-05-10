@@ -19,6 +19,7 @@ struct PieceManifest {
     layout: Option<String>,
     region: String,
     scene: Option<String>,
+    ugliness_trajectory: Option<UglinessContour>,
     event_count: usize,
     events: Vec<PieceEventPlan>,
     base_seed: u64,
@@ -212,6 +213,11 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
     let randomness = RandomnessControls::from(&args.randomness);
     let output_encoding = args.output_format.output_encoding()?;
     let base_seed = apply_seed_controls(args.seed, randomness);
+    let ugliness_trajectory = parse_optional_ugliness_contour(
+        args.ugliness_trajectory.as_ref(),
+        args.ugliness_trajectory_json.as_ref(),
+        "--ugliness-trajectory-json",
+    )?;
     let layout = args
         .layout
         .as_deref()
@@ -233,6 +239,7 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
         layout,
         region: args.region.into(),
         layer_rerolls: args.layer_rerolls,
+        ugliness_trajectory,
         channels: layout.map(|l| l.channels()).unwrap_or(args.channels),
         gain: randomize_gain(
             args.gain,
@@ -330,6 +337,7 @@ pub(super) fn piece(args: PieceArgs) -> Result<()> {
             layout: summary.layout.clone(),
             region: summary.region.clone(),
             scene: args.scene.map(piece_scene_name).map(str::to_string),
+            ugliness_trajectory: options.ugliness_trajectory.clone(),
             event_count: summary.events,
             events: summary.event_plan.clone(),
             base_seed,

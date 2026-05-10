@@ -835,6 +835,7 @@ pub struct PieceOptions {
     pub layout: Option<SurroundLayout>,
     pub region: PieceSpatialRegion,
     pub layer_rerolls: u32,
+    pub ugliness_trajectory: Option<UglinessContour>,
     pub channels: u16,
     pub gain: f64,
     pub normalize: bool,
@@ -857,6 +858,7 @@ impl Default for PieceOptions {
             layout: Some(SurroundLayout::Stereo),
             region: PieceSpatialRegion::Full,
             layer_rerolls: 0,
+            ugliness_trajectory: None,
             channels: 2,
             gain: 0.7,
             normalize: true,
@@ -1034,6 +1036,8 @@ pub struct PieceEventPlan {
     pub duration_s: f64,
     pub frames: usize,
     pub gain: f64,
+    pub target_colbys: i32,
+    pub ugliness_intensity: f64,
     pub source_xyz: [f64; 3],
     pub pan_width: f64,
 }
@@ -1541,6 +1545,9 @@ where
     F: FnMut(usize, usize, Style),
 {
     validate_piece_options(opts)?;
+    if let Some(contour) = opts.ugliness_trajectory.as_ref() {
+        validate_ugliness_contour(contour)?;
+    }
     let plan = resolve_backend_plan(engine)?;
     let seed = opts.seed.unwrap_or_else(seed_from_time);
     let layout = opts
@@ -1558,9 +1565,20 @@ where
 
     let mut last_style = None;
     for event_idx in 0..event_count {
-        let style = pick_piece_style(&opts.styles, last_style, &mut rng);
+        let event_t = if event_count <= 1 {
+            0.0
+        } else {
+            event_idx as f64 / (event_count - 1) as f64
+        };
+        let target_colbys = piece_trajectory_colbys(opts.ugliness_trajectory.as_ref(), event_t);
+        let ugliness_intensity = colbys_to_intensity(target_colbys).clamp(0.0, 1.0);
+        let style =
+            pick_piece_style_for_ugliness(&opts.styles, last_style, ugliness_intensity, &mut rng);
         last_style = Some(style);
-        let event_duration_s = rng.gen_range(opts.min_event_duration..=opts.max_event_duration);
+        let duration_bias = (0.58 + 0.84 * ugliness_intensity).clamp(0.25, 1.5);
+        let event_duration_s = (rng.gen_range(opts.min_event_duration..=opts.max_event_duration)
+            * duration_bias)
+            .clamp(opts.min_event_duration, opts.max_event_duration);
         let event_frames = usize::try_from(duration_to_frames(event_duration_s, opts.sample_rate)?)
             .map_err(|_| anyhow!("piece event is too large for this platform"))?
             .max(1)
@@ -1572,7 +1590,9 @@ where
             rng.gen_range(0..=max_start)
         };
         let event_seed = piece_layer_seed(rng.r#gen::<u64>(), opts.layer_rerolls, 0);
-        let event_gain = (opts.gain * rng.gen_range(0.45_f64..1.0_f64)).clamp(0.0, 1.0);
+        let event_gain =
+            (opts.gain * rng.gen_range(0.45_f64..1.0_f64) * (0.62 + 0.76 * ugliness_intensity))
+                .clamp(0.0, 1.0);
         let mut event = render_samples_with_plan(
             event_frames,
             opts.sample_rate as f64,
@@ -1581,8 +1601,14 @@ where
             event_seed,
             &plan,
         )?;
-        if rng.gen_bool(0.72) && opts.styles.len() > 1 {
-            let alt_style = pick_piece_style(&opts.styles, Some(style), &mut rng);
+        if rng.gen_bool((0.42 + 0.5 * ugliness_intensity).clamp(0.0, 0.98)) && opts.styles.len() > 1
+        {
+            let alt_style = pick_piece_style_for_ugliness(
+                &opts.styles,
+                Some(style),
+                ugliness_intensity,
+                &mut rng,
+            );
             let alt_seed = piece_layer_seed(rng.r#gen::<u64>(), opts.layer_rerolls, 1);
             let alt_gain = (event_gain * rng.gen_range(0.25_f64..0.7_f64)).clamp(0.0, 1.0);
             let alt = render_samples_with_plan(
@@ -1595,8 +1621,15 @@ where
             )?;
             mix_piece_layer(&mut event, &alt, rng.gen_range(0.22_f64..0.58_f64));
         }
-        if rng.gen_bool(0.26) && opts.styles.len() > 2 {
-            let third_style = pick_piece_style(&opts.styles, Some(style), &mut rng);
+        if rng.gen_bool((0.08 + 0.38 * ugliness_intensity).clamp(0.0, 0.88))
+            && opts.styles.len() > 2
+        {
+            let third_style = pick_piece_style_for_ugliness(
+                &opts.styles,
+                Some(style),
+                ugliness_intensity,
+                &mut rng,
+            );
             let third = render_samples_with_plan(
                 event_frames,
                 opts.sample_rate as f64,
@@ -1639,6 +1672,8 @@ where
             duration_s: event_frames as f64 / opts.sample_rate as f64,
             frames: event_frames,
             gain: event_gain,
+            target_colbys,
+            ugliness_intensity,
             source_xyz: source,
             pan_width: width,
         });
@@ -2149,6 +2184,59 @@ fn pick_piece_style(styles: &[Style], previous: Option<Style>, rng: &mut ChaCha8
         }
     }
     styles[rng.gen_range(0..styles.len())]
+}
+
+fn pick_piece_style_for_ugliness(
+    styles: &[Style],
+    previous: Option<Style>,
+    ugliness_intensity: f64,
+    rng: &mut ChaCha8Rng,
+) -> Style {
+    if styles.len() <= 1 {
+        return styles[0];
+    }
+    let target = ugliness_intensity.clamp(0.0, 1.0);
+    let mut best = pick_piece_style(styles, previous, rng);
+    let mut best_score = f64::INFINITY;
+    for _ in 0..10 {
+        let candidate = pick_piece_style(styles, previous, rng);
+        let severity = style_ugliness_norm(candidate);
+        let mismatch = (severity - target).abs();
+        let chaos_bonus = rng.gen_range(0.0_f64..0.16_f64) * target;
+        let score = mismatch - chaos_bonus;
+        if score < best_score {
+            best = candidate;
+            best_score = score;
+        }
+    }
+    best
+}
+
+fn style_ugliness_norm(style: Style) -> f64 {
+    match style {
+        Style::Hum => 0.08,
+        Style::Wink => 0.16,
+        Style::Pop => 0.24,
+        Style::Rub => 0.3,
+        Style::Buzz => 0.38,
+        Style::Digital => 0.46,
+        Style::Lucky => 0.52,
+        Style::Spank => 0.58,
+        Style::Steal => 0.64,
+        Style::Distort => 0.7,
+        Style::Meltdown => 0.78,
+        Style::Harsh => 0.84,
+        Style::Glitch => 0.9,
+        Style::Punish => 0.96,
+        Style::Catastrophic => 1.0,
+    }
+}
+
+fn piece_trajectory_colbys(contour: Option<&UglinessContour>, t_norm: f64) -> i32 {
+    contour
+        .map(|c| contour_level_at(c, t_norm).round() as i32)
+        .unwrap_or(COLBYS_NEUTRAL)
+        .clamp(COLBYS_MIN, COLBYS_MAX)
 }
 
 fn mix_piece_layer(base: &mut [f64], layer: &[f64], mix: f64) {
@@ -3220,6 +3308,9 @@ pub fn validate_piece_options(opts: &PieceOptions) -> Result<()> {
         return Err(anyhow!(
             "max-pan-width must be at least min-pan-width and no greater than 64.0"
         ));
+    }
+    if let Some(contour) = opts.ugliness_trajectory.as_ref() {
+        validate_ugliness_contour(contour)?;
     }
     Ok(())
 }

@@ -121,6 +121,21 @@ cargo run -- piece \
   --seed 43003
 ```
 
+`piece` can also follow an ugliness trajectory. The format is the same contour JSON used by `go`: `version`, optional `name`/`description`, `interpolation` (`linear` or `step`), and `points` with normalized time `t` plus `colbys`.
+
+```bash
+cargo run -- piece \
+  --output out/rising_ugliness.wav \
+  --duration 60 \
+  --layout stereo \
+  --scene arcade-collapse \
+  --ugliness-trajectory-json '{"version":1,"name":"rising","interpolation":"linear","points":[{"t":0.0,"colbys":-700},{"t":0.5,"colbys":150},{"t":1.0,"colbys":950}]}' \
+  --manifest out/rising_ugliness.manifest.json \
+  --seed 43003
+```
+
+The trajectory shapes event style selection, layer density, duration, gain, and the per-event `target_colbys` / `ugliness_intensity` fields recorded in the manifest.
+
 ### `usg chain`
 
 Build multi-stage synthesis/effect pipelines.

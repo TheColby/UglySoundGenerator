@@ -280,6 +280,60 @@ fn piece_supports_atmos_layouts() {
 }
 
 #[test]
+fn piece_accepts_ugliness_trajectory_and_records_event_targets() {
+    let dir = temp_dir("piece_trajectory");
+    let wav = dir.join("piece_trajectory.wav");
+    let manifest = dir.join("piece_trajectory.manifest.json");
+    let trajectory = r#"{"version":1,"name":"rise","interpolation":"linear","points":[{"t":0.0,"colbys":-700},{"t":0.5,"colbys":100},{"t":1.0,"colbys":950}]}"#;
+
+    let render = Command::new(bin())
+        .args([
+            "piece",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.6",
+            "--events-per-second",
+            "8",
+            "--min-event-duration",
+            "0.02",
+            "--max-event-duration",
+            "0.08",
+            "--ugliness-trajectory-json",
+            trajectory,
+            "--manifest",
+            manifest.to_str().expect("manifest path"),
+            "--seed",
+            "1234",
+        ])
+        .output()
+        .expect("piece trajectory command");
+    assert!(
+        render.status.success(),
+        "piece trajectory failed: {}",
+        String::from_utf8_lossy(&render.stderr)
+    );
+
+    let manifest_json = read_json(&manifest);
+    assert_eq!(manifest_json["ugliness_trajectory"]["name"], "rise");
+    let events = manifest_json["events"].as_array().expect("events");
+    assert!(!events.is_empty(), "manifest should record events");
+    let first = events.first().expect("first event")["target_colbys"]
+        .as_i64()
+        .expect("first target_colbys");
+    let last = events.last().expect("last event")["target_colbys"]
+        .as_i64()
+        .expect("last target_colbys");
+    assert!(first < last, "trajectory should rise across the event plan");
+    assert!(
+        events
+            .iter()
+            .all(|event| event["ugliness_intensity"].as_f64().is_some()),
+        "each event should record trajectory intensity"
+    );
+}
+
+#[test]
 fn benchmark_can_export_json_and_csv() {
     let dir = temp_dir("bench_export");
     let json_path = dir.join("bench.json");

@@ -204,6 +204,14 @@ struct PieceArgs {
     #[arg(long, default_value_t = 0)]
     layer_rerolls: u32,
 
+    /// Ugliness trajectory JSON file using the contour format: points with t and colbys.
+    #[arg(long, conflicts_with = "ugliness_trajectory_json")]
+    ugliness_trajectory: Option<PathBuf>,
+
+    /// Ugliness trajectory JSON passed directly on the command line.
+    #[arg(long, conflicts_with = "ugliness_trajectory")]
+    ugliness_trajectory_json: Option<String>,
+
     /// Optional JSON manifest for reproducing this piece.
     #[arg(long)]
     manifest: Option<PathBuf>,
@@ -2874,16 +2882,28 @@ fn default_go_output_path(input: &Path) -> PathBuf {
 }
 
 fn parse_ugliness_contour(args: &GoArgs) -> Result<Option<UglinessContour>> {
-    if let Some(path) = args.level_contour.as_ref() {
+    parse_optional_ugliness_contour(
+        args.level_contour.as_ref(),
+        args.level_contour_json.as_ref(),
+        "--level-contour-json",
+    )
+}
+
+fn parse_optional_ugliness_contour(
+    path: Option<&PathBuf>,
+    inline_json: Option<&String>,
+    inline_flag: &str,
+) -> Result<Option<UglinessContour>> {
+    if let Some(path) = path {
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read contour JSON {}", path.display()))?;
         let contour: UglinessContour = serde_json::from_str(&text)
             .with_context(|| format!("invalid JSON in {}", path.display()))?;
         return Ok(Some(contour));
     }
-    if let Some(json) = args.level_contour_json.as_ref() {
+    if let Some(json) = inline_json {
         let contour: UglinessContour =
-            serde_json::from_str(json).context("invalid --level-contour-json payload")?;
+            serde_json::from_str(json).with_context(|| format!("invalid {inline_flag} payload"))?;
         return Ok(Some(contour));
     }
     Ok(None)
