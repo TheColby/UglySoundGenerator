@@ -11,6 +11,10 @@ required_files=(
   docs/METRICS.md
   docs/PSYCHOACOUSTICS.md
   scripts/generate_example_corpus.sh
+  scripts/install.sh
+  scripts/run_demos.sh
+  scripts/refresh_homebrew_formula.sh
+  packaging/homebrew/usg.rb
 )
 
 for path in "${required_files[@]}"; do
@@ -27,6 +31,9 @@ wav_count="$(find examples/audio -maxdepth 1 -type f -name '*.wav' | wc -l | tr 
 }
 
 grep -q '333 reproducible Git-LFS-tracked WAV files' README_EXAMPLES.md
-bash -n scripts/generate_example_corpus.sh
+while IFS= read -r script; do
+  bash -n "$script"
+done < <(find scripts -type f -name '*.sh' | sort)
+ruby -c packaging/homebrew/usg.rb >/dev/null
 
 echo "repo audit ok: docs present, corpus count = $wav_count"

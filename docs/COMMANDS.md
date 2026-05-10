@@ -369,6 +369,26 @@ Key options:
 
 The rank modes let you choose the tradeoff: `ugliness` rewards higher Colbys, `intelligibility` rewards the speech intelligibility index, and `balanced` favors material that stays legible while still scoring ugly.
 
+## Utility Scripts
+
+The repo includes shell helpers for installation, demos, and packaging:
+
+```bash
+./scripts/install.sh
+./scripts/demo_piece_trajectory.sh
+./scripts/demo_atmos_piece.sh
+./scripts/demo_speech_pack.sh
+./scripts/demo_analysis_joke.sh
+./scripts/run_demos.sh
+./scripts/refresh_homebrew_formula.sh
+```
+
+`scripts/install.sh` uses `cargo install --locked --path . --root "$PREFIX"` and defaults to `PREFIX=$HOME/.local`. The demo scripts write to `out/demos` unless `OUT_DIR` is set. The Homebrew formula lives at `packaging/homebrew/usg.rb` and supports HEAD installs:
+
+```bash
+brew install --HEAD ./packaging/homebrew/usg.rb
+```
+
 ## Where To Go Next
 
 - Scoring details: [METRICS.md](METRICS.md)

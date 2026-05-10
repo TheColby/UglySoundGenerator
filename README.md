@@ -169,6 +169,37 @@ Regenerate the corpus from the repo root with:
 ./scripts/generate_example_corpus.sh
 ```
 
+## Install And Demos
+
+Install from this checkout:
+
+```bash
+./scripts/install.sh
+```
+
+The installer writes `usg` to `${PREFIX:-$HOME/.local}/bin`; set `PREFIX=/usr/local` or `FEATURES=metal` if you want a different install root or feature set.
+
+Run focused demos:
+
+```bash
+./scripts/demo_piece_trajectory.sh
+./scripts/demo_atmos_piece.sh
+./scripts/demo_speech_pack.sh
+./scripts/demo_analysis_joke.sh
+```
+
+Or run all of them:
+
+```bash
+./scripts/run_demos.sh
+```
+
+Homebrew users can install the current `main` branch from the bundled formula:
+
+```bash
+brew install --HEAD ./packaging/homebrew/usg.rb
+```
+
 ## Verification
 
 USG now treats verification as part of the product surface, not an afterthought.
@@ -176,6 +207,7 @@ USG now treats verification as part of the product surface, not an afterthought.
 - CI checks Linux and macOS builds
 - CLI smoke tests cover core flows
 - `scripts/verify_repo.sh` audits repo structure and corpus expectations
+- `packaging/homebrew/usg.rb` provides a Homebrew formula for HEAD installs
 - analysis JSON now exposes score profile metadata so consumers can see which heuristic produced a score
 
 ## Architecture Sketch
