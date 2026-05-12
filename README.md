@@ -2,6 +2,8 @@
 
 UglySoundGenerator (`usg`) is a Rust command-line instrument for rendering, chaining, analyzing, and forcing sounds toward deliberate sonic ugliness.
 
+The project is partly an audio tool, partly a testbed for deliberately hostile synthesis, and partly a straight-faced joke about quantifying things that probably should not be quantified this aggressively. The serious side is useful for generating regression fixtures, stress-testing audio pipelines, building chiptune speech packs, and exploring roughness/dissonance features. The unserious side is why the unit is called a Colby and why `analyze --joke` exists.
+
 It is best understood as **three core tools** with a few power-user satellites:
 
 - `render`: synthesize ugly material from scratch
@@ -13,10 +15,30 @@ Advanced tools such as `go`, `mutate`, `normalize-pack`, `evolve`, `speech`, and
 
 ## Quickstart
 
-Build:
+Build from a checkout when you want the fastest local development loop:
 
 ```bash
 cargo build
+```
+
+Install it into your user-local bin directory when you want `usg` available from any shell:
+
+```bash
+./scripts/install.sh
+```
+
+If you prefer a Python-oriented workflow, install the lightweight pip shim from the checkout and let it delegate to the Rust binary:
+
+```bash
+python3 -m pip install -e .
+usg-pip-install
+uglysoundgenerator --help
+```
+
+Homebrew users can install the current `main` branch from the bundled formula:
+
+```bash
+brew install --HEAD ./packaging/homebrew/usg.rb
 ```
 
 Render a default file:
@@ -85,6 +107,8 @@ USG uses a single public ugliness unit: **Colbys (Co)**.
 
 `go --level` always means **target Colbys**. Internally, the engine maps that target to a normalized drive intensity in the range `0.0..1.0`, but that is an implementation detail, not a second public scoring system.
 
+The metric docs are intentionally explicit about where the model is a heuristic. `docs/METRICS.md` defines the production score profiles, while `docs/PSYCHOACOUSTICS.md` gives the literature background and the ceremonial UglierBasis equation. The joke equation is implemented only when you ask for it with `analyze --joke`; it does not contaminate the real score fields.
+
 ## Product Boundary
 
 The repo has a lot in it, so the intended hierarchy matters:
@@ -103,6 +127,16 @@ The v0.5 speech system is a power-user surface for ugly but inspectable chip spe
 Current speech profiles are `votrax-sc01`, `tms5220`, `sp0256`, `mea8000`, `s14001a`, `c64-sam`, `arcadey90s`, `handheld-lcd`, `speak-and-spell`, `macintalk`, `yamaha-psg`, and `amiga-narrator`. Profiles map to chip-specific backend families (`lpc`, `formant-grid`, `sam-vocal-tract`, `arcade-pcm`, `delta-modulation`, `klatt-cascade`, or `psg-formant`) and can be combined with three oscillator slots selected from 34 oscillator choices plus 12 excitation families.
 
 Use `speech-pack` when you want to compare every profile for the same text. It renders one WAV per profile, analyzes each one, computes an intelligibility index, and writes JSON, CSV, and HTML reports ranked by `ugliness`, `intelligibility`, or `balanced`.
+
+The speech surface is designed for both one-off abuse and corpus work. Short words expose consonant timing problems. Sentences expose rhythm, stress, and intelligibility failures. Paragraphs expose drift, fatigue, and whether the chip backend can remain charmingly cursed for more than a few seconds. Exported timelines make it possible to inspect phoneme boundaries without reverse-engineering the rendered waveform.
+
+Useful speech experiments:
+
+```bash
+cargo run -- speech --text "SYNTHESIS IS A HAUNTED TOASTER" --profile sp0256 --oscillator-a lfsr --oscillator-b formant --oscillator-c koch --output out/sp0256_toaster.wav
+cargo run -- speech-pack --text "THE QUICK BROWN FOX GLITCHES OVER THE LAZY DAC" --rank-by balanced --output-dir out/speech-pack
+cargo run -- speech --text-file docs/ROADMAP.md --input-mode paragraph --profile macintalk --timeline-json out/roadmap.timeline.json --analysis-json out/roadmap.analysis.json --output out/roadmap_voice.wav
+```
 
 ## Command Map
 
@@ -164,6 +198,15 @@ The repo ships a `333`-file WAV corpus under `examples/audio/` plus exact reprod
 
 That material intentionally lives out of the main README so the front page stays focused on orientation, not on a wall of embedded media and long command inventories.
 
+The corpus is not just a demo shelf. It is meant to act like a listening map for the whole project: basic renders, chained effects, contour-driven uglification, multichannel layouts, speech profiles, oscillator variants, and seeded random pieces. The commands are deterministic where seeds are supplied, which makes them useful for bug reports and comparisons across releases.
+
+Good first listening paths:
+
+- Start with `00_source_hum.wav`, then compare the `go` outputs to hear how a tame input is punished.
+- Scan the render grid by style name if you are tuning a single synthesis family.
+- Compare the speech grid when changing phoneme parsing or chip backend behavior.
+- Use the piece examples when testing panning, channel layout, and trajectory-driven density.
+
 Regenerate the corpus from the repo root with:
 
 ```bash
@@ -172,7 +215,7 @@ Regenerate the corpus from the repo root with:
 
 ## Install And Demos
 
-Install from this checkout:
+Install from this checkout with the shell installer:
 
 ```bash
 ./scripts/install.sh
@@ -193,6 +236,16 @@ If `$HOME/.local/bin` is not already on your shell path:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Pip support is intentionally a shim, not a second implementation of the synthesizer. It gives Python-heavy environments a console entry point and an installer helper while still using the Rust binary for DSP:
+
+```bash
+python3 -m pip install -e .
+usg-pip-install
+uglysoundgenerator render --duration 0.5 --style glitch --output out/pip_glitch.wav
+```
+
+The `uglysoundgenerator` command first delegates to `USG_BIN` if set, then to `usg` on `PATH`, and finally to `cargo run` when it can see this source checkout. That keeps editable installs pleasant without pretending the Python package is the audio engine.
 
 Run focused demos:
 
@@ -224,6 +277,8 @@ Homebrew users can install the current `main` branch from the bundled formula:
 brew install --HEAD ./packaging/homebrew/usg.rb
 ```
 
+If you maintain a personal tap, copy or symlink `packaging/homebrew/usg.rb` into your tap's `Formula/` directory. The formula is deliberately HEAD-oriented until release tarballs and checksums are published consistently.
+
 Formula maintenance lives in the repo too:
 
 ```bash
@@ -240,6 +295,7 @@ USG now treats verification as part of the product surface, not an afterthought.
 - CLI smoke tests cover core flows
 - `scripts/verify_repo.sh` audits repo structure and corpus expectations
 - `packaging/homebrew/usg.rb` provides a Homebrew formula for HEAD installs
+- `pyproject.toml` provides pip-facing console scripts for source checkout workflows
 - analysis JSON now exposes score profile metadata so consumers can see which heuristic produced a score
 
 ## Architecture Sketch

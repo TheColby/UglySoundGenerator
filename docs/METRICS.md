@@ -4,9 +4,9 @@ USG uses one public metric: **Colbys (Co)**.
 
 ## Scale
 
-```text
-Colbys in [-1000, 1000]
-```
+$$
+\operatorname{Colbys}(x) \in [-1000, 1000]
+$$
 
 Interpretation:
 
@@ -19,9 +19,9 @@ Interpretation:
 `usg go --level` is specified directly in Colbys.
 The engine converts that to an internal normalized intensity for modulation strength:
 
-```text
-I(c) = clamp((c - (-1000)) / 2000, 0, 1)
-```
+$$
+\operatorname{I}(c)=\operatorname{clamp}\left(\frac{c-(-1000)}{2000},0,1\right)
+$$
 
 where `c` is the target Colbys value and `I(c)` is the internal drive intensity.
 
@@ -45,9 +45,15 @@ The basic profile is a fast time-domain proxy built from:
 - harshness ratio
 - zero-crossing rate
 
-```text
-colbys_basic = clamp(((1.6 * C) + (45 * H) + (200 * Z)) * 20 - 1000, -1000, 1000)
-```
+$$
+\operatorname{Co}_{\mathrm{basic}} =
+\operatorname{clamp}
+\left(
+20\left(1.6C+45H+200Z\right)-1000,
+-1000,
+1000
+\right)
+$$
 
 where:
 
@@ -69,26 +75,33 @@ The psycho profile works on top of FFT-derived features:
 - tritone tension
 - wolf-fifth tension
 
-```text
-weighted_sum =
-  -4.05
-  + 1.60 * Phi_clip
-  + 1.30 * Phi_rough
-  + 1.00 * Phi_sharp
-  + 1.00 * Phi_dissonance
-  + 1.20 * Phi_transient
-  + 0.90 * Phi_harsh
-  + 1.25 * Phi_inharm
-  + 0.85 * Phi_binaural
-  + 1.05 * Phi_beatconflict
-  + 0.85 * Phi_tritone
-  + 0.75 * Phi_wolf
-  - 0.45 * Phi_harmonicity
-```
+$$
+\begin{aligned}
+s_{\mathrm{psycho}}={}&-4.05
++1.60\Phi_{\mathrm{clip}}
++1.30\Phi_{\mathrm{rough}}
++1.00\Phi_{\mathrm{sharp}} \\
+&+1.00\Phi_{\mathrm{dissonance}}
++1.20\Phi_{\mathrm{transient}}
++0.90\Phi_{\mathrm{harsh}}
++1.25\Phi_{\mathrm{inharm}} \\
+&+0.85\Phi_{\mathrm{binaural}}
++1.05\Phi_{\mathrm{beatconflict}}
++0.85\Phi_{\mathrm{tritone}}
++0.75\Phi_{\mathrm{wolf}} \\
+&-0.45\Phi_{\mathrm{harmonicity}}
+\end{aligned}
+$$
 
-```text
-colbys_psycho = clamp((2000 * sigmoid(weighted_sum)) - 1000, -1000, 1000)
-```
+$$
+\operatorname{Co}_{\mathrm{psycho}} =
+\operatorname{clamp}
+\left(
+2000\sigma(s_{\mathrm{psycho}})-1000,
+-1000,
+1000
+\right)
+$$
 
 ## Why The Versioning Matters
 

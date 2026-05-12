@@ -19,6 +19,10 @@ Examples:
   ./scripts/install.sh
   PREFIX=/usr/local ./scripts/install.sh
   FEATURES=metal ./scripts/install.sh
+
+Pip-oriented checkout flow:
+  python3 -m pip install -e .
+  usg-pip-install
 USAGE
 }
 

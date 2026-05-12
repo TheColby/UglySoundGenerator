@@ -23,6 +23,18 @@ This corpus contains 333 reproducible Git-LFS-tracked WAV files.
 Regenerate it from the repository root with `./scripts/generate_example_corpus.sh`.
 Unless a row says otherwise, renders default to 32-bit float at 192 kHz and normalize to 0 dBFS.
 
+The corpus is organized as a tour through the public surface of `usg`, not as a random pile of WAVs. The early seed set shows the smallest useful examples. The render grid explores raw synthesis styles. The chain grid exercises preset routing and effect combinations. The go contour section demonstrates time-varying ugliness targets. The speech grid documents chip-specific speech profiles and oscillator choices. The piece section shows seeded, panned, multichannel event clouds.
+
+Use these files as fixtures when changing DSP code. If a command changes intentionally, regenerate the corpus and review both the audio and this command ledger. If a command changes unintentionally, the row acts like a tiny historical witness tapping the glass.
+
+Suggested listening path:
+
+- Start with `00_source_hum.wav`, then compare `06_go_punish.wav`, `07_go_glitch_contour.wav`, and `08_go_51.wav`.
+- Jump through one style at a time in the render grid to hear rate, bit-depth, gain, and seed variation.
+- Compare adjacent chain rows to hear what appended stages do to an otherwise stable preset.
+- Listen to speech rows by profile first, oscillator second; that makes backend differences easier to hear.
+- Use the piece examples when testing panning, Atmos-like channel layouts, seeded randomness, and ugliness trajectories.
+
 ## Seed Set
 
 | File | Command | Notes |
