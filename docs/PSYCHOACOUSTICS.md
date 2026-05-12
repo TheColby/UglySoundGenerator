@@ -43,12 +43,25 @@ Qualitatively, ugliness tends to rise when:
 
 ## Main Psycho Equation
 
-```math
-\mathrm{weighted\_sum} = -4.05 + 1.6\Phi_{\mathrm{clip}} + 1.3\Phi_{\mathrm{rough}} + 1.0\Phi_{\mathrm{sharp}} + 1.0\Phi_{\mathrm{dissonance}} + 1.2\Phi_{\mathrm{transient}} + 0.9\Phi_{\mathrm{harsh}} + 1.25\Phi_{\mathrm{inharm}} + 0.85\Phi_{\mathrm{binaural}} + 1.05\Phi_{\mathrm{beatconflict}} + 0.85\Phi_{\mathrm{tritone}} + 0.75\Phi_{\mathrm{wolf}} - 0.45\Phi_{\mathrm{harmonicity}}
+```text
+weighted_sum =
+  -4.05
+  + 1.60 * Phi_clip
+  + 1.30 * Phi_rough
+  + 1.00 * Phi_sharp
+  + 1.00 * Phi_dissonance
+  + 1.20 * Phi_transient
+  + 0.90 * Phi_harsh
+  + 1.25 * Phi_inharm
+  + 0.85 * Phi_binaural
+  + 1.05 * Phi_beatconflict
+  + 0.85 * Phi_tritone
+  + 0.75 * Phi_wolf
+  - 0.45 * Phi_harmonicity
 ```
 
-```math
-\mathrm{colbys}_{\mathrm{psycho}} = \mathrm{clamp}\!\left(2000\,\sigma(\mathrm{weighted\_sum}) - 1000, -1000, 1000\right)
+```text
+colbys_psycho = clamp((2000 * sigmoid(weighted_sum)) - 1000, -1000, 1000)
 ```
 
 ## Joke Appendix: UglierBasis
@@ -56,28 +69,28 @@ Qualitatively, ugliness tends to rise when:
 `--joke` is intentionally separate from the real score.
 It is decorative and optional.
 
-```math
-\mathfrak{U}_{\mathrm{UglierBasis}}(x)=1000\,\sigma\!\left(\Phi_{1}+\Phi_{2}+\Phi_{3}+\Phi_{4}+\Phi_{5}+\Phi_{6}-\lambda\Phi_{7}\right)
+```text
+UglierBasis(x) = 1000 * sigmoid(Phi_1 + Phi_2 + Phi_3 + Phi_4 + Phi_5 + Phi_6 - lambda * Phi_7)
 ```
 
 Component sketch:
 
-- $\Phi_1$: clip arrogance
-- $\Phi_2$: roughness
-- $\Phi_3$: sharpness
-- $\Phi_4$: dissonance
-- $\Phi_5$: transient density
-- $\Phi_6$: modulation bureaucracy across mixed terms
-- $\Phi_7$: harmonicity relief
+- `Phi_1`: clip arrogance
+- `Phi_2`: roughness
+- `Phi_3`: sharpness
+- `Phi_4`: dissonance
+- `Phi_5`: transient density
+- `Phi_6`: modulation bureaucracy across mixed terms
+- `Phi_7`: harmonicity relief
 
 Coefficient family:
 
-- $\alpha$: clip-pressure scaling
-- $\beta$: roughness scaling
-- $\gamma$: dissonance scaling
-- $\delta$: transient scaling
-- $\kappa$: mixed-term bureaucracy weights
-- $\lambda$: harmonicity relief weight
+- `alpha`: clip-pressure scaling
+- `beta`: roughness scaling
+- `gamma`: dissonance scaling
+- `delta`: transient scaling
+- `kappa`: mixed-term bureaucracy weights
+- `lambda`: harmonicity relief weight
 
 ## References
 
