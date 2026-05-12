@@ -376,6 +376,7 @@ The repo includes shell helpers for installation, demos, and packaging:
 ```bash
 ./scripts/install.sh
 ./scripts/demo_piece_trajectory.sh
+./scripts/piecee.sh
 ./scripts/demo_atmos_piece.sh
 ./scripts/demo_speech_pack.sh
 ./scripts/demo_analysis_joke.sh

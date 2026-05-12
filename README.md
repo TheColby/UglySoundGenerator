@@ -7,7 +7,7 @@ It is best understood as **three core tools** with a few power-user satellites:
 - `render`: synthesize ugly material from scratch
 - `piece`: assemble a multichannel piece from many short ugly events
 - `chain`: route a render or preset pipeline through multiple stages
-- `analyze`: measure the result in **Colbys**
+- `analyze`: measure the result in acoustical ugliness units of **Colbys**
 
 Advanced tools such as `go`, `mutate`, `normalize-pack`, `evolve`, `speech`, and `speech-pack` build on those three surfaces rather than replacing them.
 
@@ -201,6 +201,8 @@ Run focused demos:
 ./scripts/demo_speech_pack.sh
 ./scripts/demo_analysis_joke.sh
 ```
+
+`scripts/piecee.sh` is a deliberately nastier shortcut for `demo_piece_trajectory.sh`: it avoids the more obviously pitched styles, uses short dense events, pushes a mostly-high ugliness trajectory, and then applies a dissonance-expanding `go` pass.
 
 Or run all of them:
 
