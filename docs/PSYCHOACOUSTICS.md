@@ -62,8 +62,8 @@ s_{\mathrm{psycho}}={}&-4.05
 $$
 
 $$
-\operatorname{Co}_{\mathrm{psycho}} =
-\operatorname{clamp}
+\mathrm{Co}_{\mathrm{psycho}} =
+\mathit{clamp}
 \left(
 2000\sigma(s_{\mathrm{psycho}})-1000,
 -1000,
@@ -78,7 +78,7 @@ It is decorative and optional.
 
 $$
 \begin{aligned}
-\operatorname{UglierBasis}(x)
+\mathrm{UglierBasis}(x)
 =1000\sigma\Bigg(
 &\frac{\displaystyle
 \sum_{i=1}^{N_c}\sum_{j=1}^{M_c}

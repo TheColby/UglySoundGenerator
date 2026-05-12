@@ -5,7 +5,7 @@ USG uses one public metric: **Colbys (Co)**.
 ## Scale
 
 $$
-\operatorname{Colbys}(x) \in [-1000, 1000]
+\mathrm{Colbys}(x) \in [-1000, 1000]
 $$
 
 Interpretation:
@@ -20,7 +20,7 @@ Interpretation:
 The engine converts that to an internal normalized intensity for modulation strength:
 
 $$
-\operatorname{I}(c)=\operatorname{clamp}\left(\frac{c-(-1000)}{2000},0,1\right)
+\mathrm{I}(c)=\mathit{clamp}\left(\frac{c-(-1000)}{2000},0,1\right)
 $$
 
 where `c` is the target Colbys value and `I(c)` is the internal drive intensity.
@@ -46,8 +46,8 @@ The basic profile is a fast time-domain proxy built from:
 - zero-crossing rate
 
 $$
-\operatorname{Co}_{\mathrm{basic}} =
-\operatorname{clamp}
+\mathrm{Co}_{\mathrm{basic}} =
+\mathit{clamp}
 \left(
 20\left(1.6C+45H+200Z\right)-1000,
 -1000,
@@ -94,8 +94,8 @@ s_{\mathrm{psycho}}={}&-4.05
 $$
 
 $$
-\operatorname{Co}_{\mathrm{psycho}} =
-\operatorname{clamp}
+\mathrm{Co}_{\mathrm{psycho}} =
+\mathit{clamp}
 \left(
 2000\sigma(s_{\mathrm{psycho}})-1000,
 -1000,
