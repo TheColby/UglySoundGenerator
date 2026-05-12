@@ -2316,6 +2316,9 @@ fn diversify_piece_event(event: &mut [f64], sample_rate: f64, seed: u64) {
     if rng.gen_bool(0.31) {
         piece_glitch_gate(event, &mut rng);
     }
+    if rng.gen_bool(0.74) {
+        piece_click_burst(event, sample_rate, &mut rng);
+    }
     if rng.gen_bool(0.19) {
         event.reverse();
     }
@@ -2385,6 +2388,44 @@ fn piece_glitch_gate(event: &mut [f64], rng: &mut ChaCha8Rng) {
             *sample = soft_clip(*sample * gate);
         }
         idx += window;
+    }
+}
+
+fn piece_click_burst(event: &mut [f64], sample_rate: f64, rng: &mut ChaCha8Rng) {
+    if event.len() < 8 {
+        return;
+    }
+    let duration_s = event.len() as f64 / sample_rate.max(1.0);
+    let clicks = ((duration_s * rng.gen_range(90.0_f64..260.0_f64)).round() as usize)
+        .clamp(1, 18)
+        .min(event.len());
+    for _ in 0..clicks {
+        let idx = rng.gen_range(0..event.len());
+        let polarity = if rng.gen_bool(0.5) { 1.0 } else { -1.0 };
+        let amp = polarity * rng.gen_range(0.18_f64..0.95_f64);
+        let tail = rng.gen_range(2..16).min(event.len() - idx);
+        for off in 0..tail {
+            let decay = 1.0 - off as f64 / tail as f64;
+            let spray = if off == 0 {
+                1.0
+            } else {
+                rng.gen_range(-0.55_f64..0.55_f64)
+            };
+            event[idx + off] = soft_clip(event[idx + off] + amp * decay * spray);
+        }
+    }
+    if rng.gen_bool(0.42) {
+        let gap = rng.gen_range(16..384).min(event.len());
+        let mut idx = rng.gen_range(0..gap.max(1));
+        while idx < event.len() {
+            if rng.gen_bool(0.3) {
+                let end = (idx + gap).min(event.len());
+                for sample in &mut event[idx..end] {
+                    *sample *= rng.gen_range(0.0_f64..0.08_f64);
+                }
+            }
+            idx += gap;
+        }
     }
 }
 
