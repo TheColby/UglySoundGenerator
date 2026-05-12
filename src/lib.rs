@@ -562,6 +562,7 @@ pub enum SurroundLayout {
     SevenOneTwo,
     SevenOneFour,
     EightZero,
+    EightOne,
     SevenTwoFour,
     NineTwoFour,
     NineOneSix,
@@ -615,6 +616,7 @@ impl SurroundLayout {
             SurroundLayout::SevenOneTwo => "7.1.2".to_string(),
             SurroundLayout::SevenOneFour => "7.1.4".to_string(),
             SurroundLayout::EightZero => "8.0".to_string(),
+            SurroundLayout::EightOne => "8.1".to_string(),
             SurroundLayout::SevenTwoFour => "7.2.4".to_string(),
             SurroundLayout::NineTwoFour => "9.2.4".to_string(),
             SurroundLayout::NineOneSix => "9.1.6".to_string(),
@@ -635,6 +637,7 @@ impl SurroundLayout {
             SurroundLayout::SevenOneTwo => 10,
             SurroundLayout::SevenOneFour => 12,
             SurroundLayout::EightZero => 8,
+            SurroundLayout::EightOne => 9,
             SurroundLayout::SevenTwoFour => 13,
             SurroundLayout::NineTwoFour => 15,
             SurroundLayout::NineOneSix => 16,
@@ -7476,6 +7479,20 @@ fn speaker_positions(layout: SurroundLayout) -> (Vec<[f64; 3]>, Option<usize>) {
                 azimuth_deg(150.0),  // Rrs
             ],
             None,
+        ),
+        SurroundLayout::EightOne => (
+            vec![
+                azimuth_deg(-30.0),  // L
+                azimuth_deg(30.0),   // R
+                azimuth_deg(0.0),    // C
+                [0.0, 0.5, 0.0],     // LFE
+                azimuth_deg(180.0),  // Cs
+                azimuth_deg(-90.0),  // Lss
+                azimuth_deg(90.0),   // Rss
+                azimuth_deg(-150.0), // Lrs
+                azimuth_deg(150.0),  // Rrs
+            ],
+            Some(3),
         ),
         SurroundLayout::SevenTwoFour => (
             vec![

@@ -51,7 +51,7 @@ Key options:
 
 - `--duration <SECONDS>`
 - `--channels <N>`
-- `--layout <mono|stereo|quad|4.0|5.0|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|8.0|7.2.4|9.2.4|9.1.6|custom:N>`
+- `--layout <mono|stereo|quad|4.0|5.0|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|8.0|8.1|7.2.4|9.2.4|9.1.6|custom:N>`
 - `--sample-rate <HZ>`
 - `--styles <STYLE,...>`
 - `--events-per-second <RATE>`
@@ -61,7 +61,7 @@ Key options:
 - `--seed <U64>`
 - `--backend <auto|cpu|metal|cuda>`
 
-When `--layout` is provided, it sets the channel count automatically and uses named speaker positions, including Atmos-style height layouts. The first-class named layouts are `4.0`, `5.0`, `5.1`, `7.1`, `8.0`, `7.1.4`, `7.2.4`, and `9.2.4`, plus legacy/extra helpers `mono`, `stereo`, `quad`, `5.1.2`, `5.1.4`, `7.1.2`, `9.1.6`, and `custom:N`.
+When `--layout` is provided, it sets the channel count automatically and uses named speaker positions, including Atmos-style height layouts. The first-class named layouts are `4.0`, `5.0`, `5.1`, `7.1`, `8.0`, `8.1`, `7.1.4`, `7.2.4`, and `9.2.4`, plus legacy/extra helpers `mono`, `stereo`, `quad`, `5.1.2`, `5.1.4`, `7.1.2`, `9.1.6`, and `custom:N`.
 
 #### Named Randomness Recipes
 

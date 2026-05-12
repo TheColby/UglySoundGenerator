@@ -153,7 +153,7 @@ struct PieceArgs {
     #[arg(long, default_value_t = 2)]
     channels: u16,
 
-    /// Optional named layout. Examples: stereo,4.0,5.0,5.1,7.1,8.0,7.1.4,7.2.4,9.2.4,custom:12
+    /// Optional named layout. Examples: stereo,4.0,5.0,5.1,7.1,8.0,8.1,7.1.4,7.2.4,9.2.4,custom:12
     #[arg(long)]
     layout: Option<String>,
 
@@ -864,7 +864,7 @@ struct GoArgs {
     flavor: Option<GoFlavorArg>,
 
     /// Optional surround layout for upmix while uglifying.
-    /// Examples: stereo,4.0,5.0,5.1,7.1,8.0,7.1.4,7.2.4,9.2.4,custom:12
+    /// Examples: stereo,4.0,5.0,5.1,7.1,8.0,8.1,7.1.4,7.2.4,9.2.4,custom:12
     #[arg(long)]
     upmix: Option<String>,
 
@@ -2932,6 +2932,7 @@ fn parse_surround_layout(text: &str) -> Result<SurroundLayout> {
         "7.1.2" | "sevenonetwo" | "atmos7.1.2" => Ok(SurroundLayout::SevenOneTwo),
         "7.1.4" | "sevenonefour" | "atmos7.1.4" => Ok(SurroundLayout::SevenOneFour),
         "8.0" | "eightzero" => Ok(SurroundLayout::EightZero),
+        "8.1" | "eightone" => Ok(SurroundLayout::EightOne),
         "7.2.4" | "seventwofour" | "atmos7.2.4" => Ok(SurroundLayout::SevenTwoFour),
         "9.2.4" | "ninetwofour" | "atmos9.2.4" => Ok(SurroundLayout::NineTwoFour),
         "9.1.6" | "nineonesix" | "atmos9.1.6" => Ok(SurroundLayout::NineOneSix),
@@ -2943,7 +2944,7 @@ fn parse_surround_layout(text: &str) -> Result<SurroundLayout> {
                 return Ok(SurroundLayout::Custom(n.max(1)));
             }
             Err(anyhow::anyhow!(
-                "unknown upmix layout '{text}' (use mono|stereo|4.0|5.0|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|8.0|7.2.4|9.2.4|9.1.6|custom:N)"
+                "unknown upmix layout '{text}' (use mono|stereo|4.0|5.0|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|8.0|8.1|7.2.4|9.2.4|9.1.6|custom:N)"
             ))
         }
     }
