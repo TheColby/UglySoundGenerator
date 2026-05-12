@@ -12,12 +12,14 @@ The next milestones focus on making those surfaces deeper, more reproducible, an
 
 ## Current Baseline
 
-As of the current `v0.5` docs slice, USG already includes:
+As of the current `v0.6` docs slice, USG already includes:
 
 - `render`, `piece`, `chain`, `go`, and `analyze` as the main product surface
 - speech synthesis with chip-inspired profiles, profile-specific backend models, phoneme timelines, text normalization, and analysis export
 - seeded reproducibility and controlled randomness knobs
 - timeline and JSON analysis outputs
+- analysis explanations with top score drivers, assumptions, and per-component contributions
+- benchmark reports with timing and score-consistency fields
 - contour-driven `go` processing and multichannel upmix workflows
 - multichannel `piece` generation, including named Atmos-style layouts
 - colored interactive progress feedback during piece assembly
@@ -65,13 +67,17 @@ Still useful follow-up:
 
 Goal: make the analyzer more useful for research, benchmarking, and guided exploration.
 
-Planned work:
+Current surface:
 
-- richer analysis JSON with per-component contributions, profile metadata, and traceable assumptions
-- more timeline exports and corpus-wide comparison reports
-- “why this scored ugly” summaries for both human-readable and machine-readable output
+- `analyze --json` includes profile metadata, traceable assumptions, top score drivers, and per-component contribution rows
+- `analyze --explain` prints a compact human-readable "why this scored ugly" summary
+- benchmark JSON/CSV reports include timing plus score-consistency fields: average/min/max Colbys and score standard deviation
+- timeline JSON/CSV remains stable for per-window analysis exports
+
+Still useful follow-up:
+
+- corpus-wide comparison reports that aggregate many files into one explainable summary
 - stronger contracts for seeded reproducibility and profile stability across releases
-- benchmark runs that report both performance and score consistency
 - better analysis of multichannel and Atmos-style pieces, including spatial activity summaries
 
 ## Medium-Term Themes

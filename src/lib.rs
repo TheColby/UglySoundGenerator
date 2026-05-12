@@ -1217,11 +1217,32 @@ pub struct AnalysisReport {
     pub score_metadata: ScoreMetadata,
     /// Ugliness in Colbys: -1000 (cleanest) to +1000 (most ugly), 0 = neutral.
     pub colbys: f64,
+    pub explanation: AnalysisExplanation,
     pub basic: Analysis,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub psycho: Option<PsychoAnalysis>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub joke: Option<JokeAnalysis>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalysisExplanation {
+    pub summary: String,
+    pub profile: String,
+    pub score_contract: String,
+    pub top_factors: Vec<String>,
+    pub assumptions: Vec<String>,
+    pub component_contributions: Vec<AnalysisComponentContribution>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalysisComponentContribution {
+    pub name: String,
+    pub value: f64,
+    pub weight: f64,
+    pub contribution: f64,
+    pub direction: String,
+    pub assumption: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3163,6 +3184,7 @@ pub fn analyze_wav_with_options(path: &Path, opts: &AnalyzeOptions) -> Result<An
             AnalyzeModel::Psycho => psycho_score_metadata(),
         },
         colbys,
+        explanation: build_analysis_explanation(opts.model, &basic, psycho.as_ref(), colbys),
         basic,
         psycho,
         joke,
@@ -6221,6 +6243,235 @@ fn analyze_samples_psycho(
         colbys,
         fft_size: opts.fft_size,
         hop_size: opts.hop_size,
+    }
+}
+
+fn build_analysis_explanation(
+    model: AnalyzeModel,
+    basic: &Analysis,
+    psycho: Option<&PsychoAnalysis>,
+    colbys: f64,
+) -> AnalysisExplanation {
+    let mut assumptions = vec![
+        "Scores are transparent heuristics, not listening-test-calibrated perceptual standards."
+            .to_string(),
+        "Compare scores only within the same score profile version.".to_string(),
+    ];
+    let components = match (model, psycho) {
+        (AnalyzeModel::Psycho, Some(p)) => {
+            assumptions.push(
+                "Psycho profile uses FFT-derived roughness, sharpness, dissonance, interval tension, and stereo pressure proxies."
+                    .to_string(),
+            );
+            psycho_component_contributions(p)
+        }
+        _ => {
+            assumptions.push(
+                "Basic profile uses fast time-domain proxies: clipping, harshness, and zero crossings."
+                    .to_string(),
+            );
+            basic_component_contributions(basic)
+        }
+    };
+    let mut top = components.clone();
+    top.sort_by(|a, b| b.contribution.abs().total_cmp(&a.contribution.abs()));
+    let top_factors = top
+        .iter()
+        .take(4)
+        .map(|c| {
+            format!(
+                "{}: {} contribution {:.3} from value {:.3}",
+                c.name, c.direction, c.contribution, c.value
+            )
+        })
+        .collect::<Vec<_>>();
+    let profile = match model {
+        AnalyzeModel::Basic => basic_score_metadata().profile.to_string(),
+        AnalyzeModel::Psycho => psycho_score_metadata().profile.to_string(),
+    };
+    let summary = if colbys >= 650.0 {
+        "Very ugly: high-scoring components dominate the profile.".to_string()
+    } else if colbys >= 150.0 {
+        "Ugly: several components push the score above neutral.".to_string()
+    } else if colbys > -150.0 {
+        "Near neutral: ugly and relieving components are roughly balanced.".to_string()
+    } else {
+        "Low ugliness: this file lacks enough measured distress cues for a high score.".to_string()
+    };
+    AnalysisExplanation {
+        summary,
+        profile,
+        score_contract: "Colbys range from -1000 to +1000; higher is uglier; 0 is neutral."
+            .to_string(),
+        top_factors,
+        assumptions,
+        component_contributions: components,
+    }
+}
+
+fn basic_component_contributions(basic: &Analysis) -> Vec<AnalysisComponentContribution> {
+    let p = BASIC_SCORE_PROFILE_V1;
+    vec![
+        analysis_component(
+            "clipped_pct",
+            basic.clipped_pct,
+            p.clip_pct_weight * p.scale,
+            basic.clipped_pct * p.clip_pct_weight * p.scale,
+            "raises ugliness",
+            "Sustained near-full-scale samples are treated as clipping pressure.",
+        ),
+        analysis_component(
+            "harshness_ratio",
+            basic.harshness_ratio,
+            p.harshness_weight * p.scale,
+            basic.harshness_ratio * p.harshness_weight * p.scale,
+            "raises ugliness",
+            "Large sample-to-sample differences are treated as harshness.",
+        ),
+        analysis_component(
+            "zero_crossing_rate",
+            basic.zero_crossing_rate,
+            p.zero_crossing_weight * p.scale,
+            basic.zero_crossing_rate * p.zero_crossing_weight * p.scale,
+            "raises ugliness",
+            "Frequent sign changes are treated as high-frequency agitation.",
+        ),
+        analysis_component(
+            "profile_offset",
+            1.0,
+            p.offset,
+            p.offset,
+            "lowers baseline",
+            "The offset keeps silence and mild material below neutral.",
+        ),
+    ]
+}
+
+fn psycho_component_contributions(psycho: &PsychoAnalysis) -> Vec<AnalysisComponentContribution> {
+    let p = PSYCHO_SCORE_PROFILE_V1;
+    vec![
+        analysis_component(
+            "clip_norm",
+            psycho.clip_norm,
+            p.clip_weight,
+            psycho.clip_norm * p.clip_weight,
+            "raises ugliness",
+            "Clipping pressure is treated as aggressive distortion.",
+        ),
+        analysis_component(
+            "roughness_norm",
+            psycho.roughness_norm,
+            p.roughness_weight,
+            psycho.roughness_norm * p.roughness_weight,
+            "raises ugliness",
+            "Modulation in the roughness zone is treated as sensory irritation.",
+        ),
+        analysis_component(
+            "sharpness_norm",
+            psycho.sharpness_norm,
+            p.sharpness_weight,
+            psycho.sharpness_norm * p.sharpness_weight,
+            "raises ugliness",
+            "High-frequency concentration is treated as glare.",
+        ),
+        analysis_component(
+            "dissonance_norm",
+            psycho.dissonance_norm,
+            p.dissonance_weight,
+            psycho.dissonance_norm * p.dissonance_weight,
+            "raises ugliness",
+            "Close spectral conflicts are treated as sensory dissonance.",
+        ),
+        analysis_component(
+            "transient_norm",
+            psycho.transient_norm,
+            p.transient_weight,
+            psycho.transient_norm * p.transient_weight,
+            "raises ugliness",
+            "Dense attacks are treated as interruption pressure.",
+        ),
+        analysis_component(
+            "harshness_norm",
+            psycho.harshness_norm,
+            p.harshness_weight,
+            psycho.harshness_norm * p.harshness_weight,
+            "raises ugliness",
+            "Time-domain jaggedness supports the psycho score.",
+        ),
+        analysis_component(
+            "inharmonicity_norm",
+            psycho.inharmonicity_norm,
+            p.inharmonicity_weight,
+            psycho.inharmonicity_norm * p.inharmonicity_weight,
+            "raises ugliness",
+            "Weak harmonic fit is treated as unstable tone organization.",
+        ),
+        analysis_component(
+            "binaural_beat_norm",
+            psycho.binaural_beat_norm,
+            p.binaural_beat_weight,
+            psycho.binaural_beat_norm * p.binaural_beat_weight,
+            "raises ugliness",
+            "Left/right partial disagreements are treated as binaural pressure.",
+        ),
+        analysis_component(
+            "beat_conflict_norm",
+            psycho.beat_conflict_norm,
+            p.beat_conflict_weight,
+            psycho.beat_conflict_norm * p.beat_conflict_weight,
+            "raises ugliness",
+            "Competing beat rates are treated as rhythmic/spectral conflict.",
+        ),
+        analysis_component(
+            "tritone_tension_norm",
+            psycho.tritone_tension_norm,
+            p.tritone_tension_weight,
+            psycho.tritone_tension_norm * p.tritone_tension_weight,
+            "raises ugliness",
+            "Tritone-like interval pressure is treated as tension.",
+        ),
+        analysis_component(
+            "wolf_fifth_norm",
+            psycho.wolf_fifth_norm,
+            p.wolf_fifth_weight,
+            psycho.wolf_fifth_norm * p.wolf_fifth_weight,
+            "raises ugliness",
+            "Wolf-fifth pressure is treated as mistuned consonance.",
+        ),
+        analysis_component(
+            "harmonicity_norm",
+            psycho.harmonicity_norm,
+            -p.harmonicity_relief_weight,
+            -psycho.harmonicity_norm * p.harmonicity_relief_weight,
+            "relieves ugliness",
+            "Stable harmonic fit reduces the score.",
+        ),
+        analysis_component(
+            "profile_bias",
+            1.0,
+            p.bias,
+            p.bias,
+            "lowers baseline",
+            "The bias prevents weak feature activity from scoring as ugly by default.",
+        ),
+    ]
+}
+
+fn analysis_component(
+    name: &str,
+    value: f64,
+    weight: f64,
+    contribution: f64,
+    direction: &str,
+    assumption: &str,
+) -> AnalysisComponentContribution {
+    AnalysisComponentContribution {
+        name: name.to_string(),
+        value,
+        weight,
+        contribution,
+        direction: direction.to_string(),
+        assumption: assumption.to_string(),
     }
 }
 

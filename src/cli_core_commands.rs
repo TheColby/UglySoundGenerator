@@ -620,6 +620,19 @@ pub(super) fn analyze(args: AnalyzeArgs) -> Result<()> {
         println!("joke.weighted_sum: {:.3}", joke.weighted_sum);
     }
 
+    if args.explain {
+        println!("why: {}", report.explanation.summary);
+        println!("score_contract: {}", report.explanation.score_contract);
+        println!("top_factors:");
+        for factor in &report.explanation.top_factors {
+            println!("  - {}", factor);
+        }
+        println!("assumptions:");
+        for assumption in &report.explanation.assumptions {
+            println!("  - {}", assumption);
+        }
+    }
+
     println!("colbys: {:.0} Co  (Colbys)", report.colbys);
     Ok(())
 }
@@ -1324,6 +1337,7 @@ pub(super) fn benchmark(args: BenchmarkArgs) -> Result<()> {
             args.gpu_crush_mix,
         );
         let mut run_ms = Vec::with_capacity(runs);
+        let mut run_colbys = Vec::with_capacity(runs);
         for run_idx in 0..runs {
             let out_path = std::env::temp_dir().join(format!(
                 "usg_bench_{}_{}_{}.wav",
@@ -1361,6 +1375,17 @@ pub(super) fn benchmark(args: BenchmarkArgs) -> Result<()> {
             render_to_wav_with_engine(&out_path, &opts, &engine)
                 .with_context(|| format!("benchmark render failed for {}", backend))?;
             run_ms.push(t0.elapsed().as_secs_f64() * 1_000.0);
+            let analysis = analyze_wav_with_options(
+                &out_path,
+                &AnalyzeOptions {
+                    model: AnalyzeModel::Basic,
+                    fft_size: 2048,
+                    hop_size: 512,
+                    joke: false,
+                },
+            )
+            .with_context(|| format!("benchmark analysis failed for {}", backend))?;
+            run_colbys.push(analysis.colbys);
             let _ = fs::remove_file(out_path);
         }
         let average_ms = run_ms.iter().sum::<f64>() / run_ms.len() as f64;
@@ -1374,6 +1399,27 @@ pub(super) fn benchmark(args: BenchmarkArgs) -> Result<()> {
             .copied()
             .reduce(f64::max)
             .unwrap_or(average_ms);
+        let average_colbys = run_colbys.iter().sum::<f64>() / run_colbys.len().max(1) as f64;
+        let min_colbys = run_colbys
+            .iter()
+            .copied()
+            .reduce(f64::min)
+            .unwrap_or(average_colbys);
+        let max_colbys = run_colbys
+            .iter()
+            .copied()
+            .reduce(f64::max)
+            .unwrap_or(average_colbys);
+        let score_stddev_colbys = if run_colbys.len() <= 1 {
+            0.0
+        } else {
+            (run_colbys
+                .iter()
+                .map(|score| (score - average_colbys).powi(2))
+                .sum::<f64>()
+                / run_colbys.len() as f64)
+                .sqrt()
+        };
         rows.push(BenchmarkEntry {
             rank: 0,
             backend: backend.as_str().to_string(),
@@ -1387,6 +1433,11 @@ pub(super) fn benchmark(args: BenchmarkArgs) -> Result<()> {
             },
             runs,
             run_ms,
+            average_colbys,
+            min_colbys,
+            max_colbys,
+            score_stddev_colbys,
+            run_colbys,
         });
     }
 
@@ -1436,8 +1487,15 @@ pub(super) fn benchmark(args: BenchmarkArgs) -> Result<()> {
     println!("Average render time:");
     for row in &report.rows {
         println!(
-            "  {:>2}. {:<5} {:>8.3} ms  min {:>8.3}  max {:>8.3}  x{:>6.2} realtime",
-            row.rank, row.backend, row.average_ms, row.min_ms, row.max_ms, row.realtime_factor
+            "  {:>2}. {:<5} {:>8.3} ms  min {:>8.3}  max {:>8.3}  x{:>6.2} realtime  score avg {:>6.1} Co std {:>5.1}",
+            row.rank,
+            row.backend,
+            row.average_ms,
+            row.min_ms,
+            row.max_ms,
+            row.realtime_factor,
+            row.average_colbys,
+            row.score_stddev_colbys
         );
     }
 

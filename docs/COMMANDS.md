@@ -159,12 +159,13 @@ Measure ugliness.
 ```bash
 cargo run -- analyze out/chain.wav
 cargo run -- analyze out/chain.wav --json
+cargo run -- analyze out/chain.wav --model psycho --explain
 cargo run -- analyze out/chain.wav --model basic
 cargo run -- analyze out/chain.wav --model psycho
 cargo run -- analyze out/chain.wav --timeline --timeline-format csv --timeline-output out/chain.timeline.csv
 ```
 
-The JSON output includes score profile metadata so downstream tooling can tell whether a score came from `usg-basic-v1` or `usg-psycho-v1`.
+The JSON output includes score profile metadata and an `explanation` object with top factors, assumptions, and per-component contributions. `--explain` prints the same reasoning in a compact human-readable form.
 
 ### `usg go`
 
@@ -240,7 +241,7 @@ cargo run -- backends
 
 ### `usg benchmark`
 
-Benchmark render throughput and optionally export structured results.
+Benchmark render throughput and optionally export structured results. Since `v0.6`, benchmark reports also include score consistency fields (`average_colbys`, min/max Colbys, and score standard deviation) so performance changes can be compared against output stability.
 
 ```bash
 cargo run -- benchmark --duration 1.0

@@ -30,6 +30,7 @@ Analyze it:
 ```bash
 cargo run -- analyze out/harsh.wav
 cargo run -- analyze out/harsh.wav --json
+cargo run -- analyze out/harsh.wav --model psycho --explain
 ```
 
 Force an existing file to a target ugliness in Colbys:

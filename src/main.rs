@@ -651,6 +651,10 @@ struct AnalyzeArgs {
     #[arg(long)]
     json: bool,
 
+    /// Print a human-readable explanation of the score drivers.
+    #[arg(long)]
+    explain: bool,
+
     /// Also compute the joke UglierBasis score and breakdown.
     #[arg(long)]
     joke: bool,
@@ -2180,6 +2184,11 @@ struct BenchmarkEntry {
     realtime_factor: f64,
     runs: usize,
     run_ms: Vec<f64>,
+    average_colbys: f64,
+    min_colbys: f64,
+    max_colbys: f64,
+    score_stddev_colbys: f64,
+    run_colbys: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3214,10 +3223,10 @@ fn write_benchmark_csv(path: &Path, report: &BenchmarkReport) -> Result<()> {
         }
     }
     let mut text = String::new();
-    text.push_str("rank,backend,average_ms,min_ms,max_ms,realtime_factor,runs\n");
+    text.push_str("rank,backend,average_ms,min_ms,max_ms,realtime_factor,runs,average_colbys,min_colbys,max_colbys,score_stddev_colbys\n");
     for row in &report.rows {
         text.push_str(&format!(
-            "{},{},{:.6},{:.6},{:.6},{:.6},{}\n",
+            "{},{},{:.6},{:.6},{:.6},{:.6},{},{:.6},{:.6},{:.6},{:.6}\n",
             row.rank,
             csv_escape(&row.backend),
             row.average_ms,
@@ -3225,6 +3234,10 @@ fn write_benchmark_csv(path: &Path, report: &BenchmarkReport) -> Result<()> {
             row.max_ms,
             row.realtime_factor,
             row.runs,
+            row.average_colbys,
+            row.min_colbys,
+            row.max_colbys,
+            row.score_stddev_colbys,
         ));
     }
     fs::write(path, text)?;

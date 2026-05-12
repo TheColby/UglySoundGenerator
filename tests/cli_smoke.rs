@@ -118,6 +118,48 @@ fn analyze_json_includes_score_metadata() {
         stdout.contains("\"calibrated_from_listening_tests\": false"),
         "stdout was:\n{stdout}"
     );
+    assert!(stdout.contains("\"explanation\""), "stdout was:\n{stdout}");
+    assert!(stdout.contains("\"top_factors\""), "stdout was:\n{stdout}");
+    assert!(
+        stdout.contains("\"component_contributions\""),
+        "stdout was:\n{stdout}"
+    );
+}
+
+#[test]
+fn analyze_explain_prints_human_readable_score_reasons() {
+    let dir = temp_dir("analyze_explain");
+    let wav = dir.join("input.wav");
+
+    let render = Command::new(bin())
+        .args([
+            "render",
+            "--output",
+            wav.to_str().expect("wav path"),
+            "--duration",
+            "0.1",
+            "--style",
+            "punish",
+        ])
+        .output()
+        .expect("render command");
+    assert!(render.status.success(), "render failed");
+
+    let analyze = Command::new(bin())
+        .args([
+            "analyze",
+            wav.to_str().expect("wav path"),
+            "--model",
+            "psycho",
+            "--explain",
+        ])
+        .output()
+        .expect("analyze explain command");
+    assert!(analyze.status.success(), "analyze --explain failed");
+    let stdout = String::from_utf8_lossy(&analyze.stdout);
+    assert!(stdout.contains("why:"), "stdout was:\n{stdout}");
+    assert!(stdout.contains("top_factors:"), "stdout was:\n{stdout}");
+    assert!(stdout.contains("assumptions:"), "stdout was:\n{stdout}");
 }
 
 #[test]
@@ -366,7 +408,17 @@ fn benchmark_can_export_json_and_csv() {
 {json}"
     );
     assert!(
+        json.contains("\"average_colbys\"") && json.contains("\"score_stddev_colbys\""),
+        "json was:
+{json}"
+    );
+    assert!(
         csv.contains("rank,backend,average_ms"),
+        "csv was:
+{csv}"
+    );
+    assert!(
+        csv.contains("average_colbys") && csv.contains("score_stddev_colbys"),
         "csv was:
 {csv}"
     );
