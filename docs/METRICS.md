@@ -5,7 +5,7 @@ USG uses one public metric: **Colbys (Co)**.
 ## Scale
 
 $$
-\mathrm{Colbys}(x) \in [-1000, 1000]
+C(x) \in [-1000, 1000]
 $$
 
 Interpretation:
@@ -20,7 +20,7 @@ Interpretation:
 The engine converts that to an internal normalized intensity for modulation strength:
 
 $$
-\mathrm{I}(c)=\mathit{clamp}\left(\frac{c-(-1000)}{2000},0,1\right)
+I(c)=clamp(\frac{c-(-1000)}{2000},0,1)
 $$
 
 where `c` is the target Colbys value and `I(c)` is the internal drive intensity.
@@ -46,13 +46,12 @@ The basic profile is a fast time-domain proxy built from:
 - zero-crossing rate
 
 $$
-\mathrm{Co}_{\mathrm{basic}} =
-\mathit{clamp}
-\left(
-20\left(1.6C+45H+200Z\right)-1000,
+Co_{basic} =
+clamp(
+20(1.6C+45H+200Z)-1000,
 -1000,
 1000
-\right)
+)
 $$
 
 where:
@@ -76,31 +75,16 @@ The psycho profile works on top of FFT-derived features:
 - wolf-fifth tension
 
 $$
-\begin{aligned}
-s_{\mathrm{psycho}}={}&-4.05
-+1.60\Phi_{\mathrm{clip}}
-+1.30\Phi_{\mathrm{rough}}
-+1.00\Phi_{\mathrm{sharp}} \\
-&+1.00\Phi_{\mathrm{dissonance}}
-+1.20\Phi_{\mathrm{transient}}
-+0.90\Phi_{\mathrm{harsh}}
-+1.25\Phi_{\mathrm{inharm}} \\
-&+0.85\Phi_{\mathrm{binaural}}
-+1.05\Phi_{\mathrm{beatconflict}}
-+0.85\Phi_{\mathrm{tritone}}
-+0.75\Phi_{\mathrm{wolf}} \\
-&-0.45\Phi_{\mathrm{harmonicity}}
-\end{aligned}
+s_{psycho}=-4.05+1.60\Phi_{clip}+1.30\Phi_{rough}+1.00\Phi_{sharp}+1.00\Phi_{dissonance}+1.20\Phi_{transient}+0.90\Phi_{harsh}+1.25\Phi_{inharm}+0.85\Phi_{binaural}+1.05\Phi_{beatconflict}+0.85\Phi_{tritone}+0.75\Phi_{wolf}-0.45\Phi_{harmonicity}
 $$
 
 $$
-\mathrm{Co}_{\mathrm{psycho}} =
-\mathit{clamp}
-\left(
-2000\sigma(s_{\mathrm{psycho}})-1000,
+Co_{psycho} =
+clamp(
+2000\sigma(s_{psycho})-1000,
 -1000,
 1000
-\right)
+)
 $$
 
 ## Why The Versioning Matters

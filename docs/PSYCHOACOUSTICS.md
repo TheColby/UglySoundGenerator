@@ -44,31 +44,16 @@ Qualitatively, ugliness tends to rise when:
 ## Main Psycho Equation
 
 $$
-\begin{aligned}
-s_{\mathrm{psycho}}={}&-4.05
-+1.60\Phi_{\mathrm{clip}}
-+1.30\Phi_{\mathrm{rough}}
-+1.00\Phi_{\mathrm{sharp}} \\
-&+1.00\Phi_{\mathrm{dissonance}}
-+1.20\Phi_{\mathrm{transient}}
-+0.90\Phi_{\mathrm{harsh}}
-+1.25\Phi_{\mathrm{inharm}} \\
-&+0.85\Phi_{\mathrm{binaural}}
-+1.05\Phi_{\mathrm{beatconflict}}
-+0.85\Phi_{\mathrm{tritone}}
-+0.75\Phi_{\mathrm{wolf}} \\
-&-0.45\Phi_{\mathrm{harmonicity}}
-\end{aligned}
+s_{psycho}=-4.05+1.60\Phi_{clip}+1.30\Phi_{rough}+1.00\Phi_{sharp}+1.00\Phi_{dissonance}+1.20\Phi_{transient}+0.90\Phi_{harsh}+1.25\Phi_{inharm}+0.85\Phi_{binaural}+1.05\Phi_{beatconflict}+0.85\Phi_{tritone}+0.75\Phi_{wolf}-0.45\Phi_{harmonicity}
 $$
 
 $$
-\mathrm{Co}_{\mathrm{psycho}} =
-\mathit{clamp}
-\left(
-2000\sigma(s_{\mathrm{psycho}})-1000,
+Co_{psycho} =
+clamp(
+2000\sigma(s_{psycho})-1000,
 -1000,
 1000
-\right)
+)
 $$
 
 ## Joke Appendix: UglierBasis
@@ -77,74 +62,51 @@ $$
 It is decorative and optional.
 
 $$
-\begin{aligned}
-\mathrm{UglierBasis}(x)
-=1000\sigma\Bigg(
-&\frac{\displaystyle
-\sum_{i=1}^{N_c}\sum_{j=1}^{M_c}
-\alpha_i\,\rho_j\,C_{i,j}^{2}
-}{\displaystyle
-1+\prod_{q=1}^{Q_c}\left(1+\eta_q C_q\right)}
-\\
-&+\frac{\displaystyle
-\sum_{r=1}^{R}\beta_r
-\left(\sum_{k=1}^{K_r}\frac{A_{r,k}A_{r,k+1}}{1+\left|\Delta f_{r,k}\right|}\right)
-}{
-\displaystyle
-1+\frac{1}{1+\sum_{u=1}^{U}\omega_u S_u}
-}
-\\
-&+\frac{\displaystyle
-\prod_{m=1}^{M}\left(1+\gamma_m D_m\right)
--\prod_{n=1}^{N}\left(1+\mu_n H_n\right)^{-1}
-}{
-\displaystyle
-1+\sum_{\ell=1}^{L}\frac{\lambda_\ell}{1+T_\ell^{2}}
-}
-\\
-&+\frac{\displaystyle
-\sum_{a=1}^{A}\sum_{b=1}^{B}\sum_{d=1}^{D}
-\kappa_{a,b,d}\,G_a\,P_b\,X_d
-}{
-\displaystyle
-\prod_{v=1}^{V}\left(1+\nu_v R_v\right)
-+\frac{1}{1+\sum_{z=1}^{Z}\zeta_z Z_z}
-}
-\\
-&+\frac{\displaystyle
-\sum_{p=1}^{P}\chi_p B_p
-+\sum_{w=1}^{W}\psi_w W_w
-+\sum_{\tau=1}^{T_\theta}\theta_\tau \Theta_\tau
-}{
-\displaystyle
-1+\prod_{y=1}^{Y}\left(1+\xi_y Y_y^{2}\right)^{-1}
-}
-\Bigg)
-\end{aligned}
+U(x)=1000\sigma(Q_1+Q_2+Q_3+Q_4+Q_5)
+$$
+
+$$
+Q_1=\frac{\sum_{i=1}^{N_{c}}\sum_{j=1}^{M_{c}}\alpha_{i}\rho_{j}C_{i,j}^{2}}{1+\prod_{q=1}^{Q_{c}}(1+\eta_{q}C_{q})}
+$$
+
+$$
+Q_2=\frac{\sum_{r=1}^{R}\beta_{r}(\sum_{k=1}^{K_{r}}\frac{A_{r,k}A_{r,k+1}}{1+|\Delta f_{r,k}|})}{1+\frac{1}{1+\sum_{u=1}^{U}\omega_{u}S_{u}}}
+$$
+
+$$
+Q_3=\frac{\prod_{m=1}^{M}(1+\gamma_{m}D_{m})-\prod_{n=1}^{N}(1+\mu_{n}H_{n})^{-1}}{1+\sum_{\ell=1}^{L}\frac{\lambda_{\ell}}{1+T_{\ell}^{2}}}
+$$
+
+$$
+Q_4=\frac{\sum_{a=1}^{A}\sum_{b=1}^{B}\sum_{d=1}^{D}\kappa_{a,b,d}G_{a}P_{b}X_{d}}{\prod_{v=1}^{V}(1+\nu_{v}R_{v})+\frac{1}{1+\sum_{z=1}^{Z}\zeta_{z}Z_{z}}}
+$$
+
+$$
+Q_5=\frac{\sum_{p=1}^{P}\chi_{p}B_{p}+\sum_{w=1}^{W}\psi_{w}W_{w}+\sum_{\tau=1}^{T_{\theta}}\theta_{\tau}\Theta_{\tau}}{1+\prod_{y=1}^{Y}(1+\xi_{y}Y_{y}^{2})^{-1}}
 $$
 
 Component sketch:
 
-- $\Phi_1$: clip arrogance
-- $\Phi_2$: roughness
-- $\Phi_3$: sharpness
-- $\Phi_4$: dissonance
-- $\Phi_5$: transient density
-- $\Phi_6$: modulation bureaucracy across mixed terms
-- $\Phi_7$: harmonicity relief
+- $\Phi_{1}$: clip arrogance
+- $\Phi_{2}$: roughness
+- $\Phi_{3}$: sharpness
+- $\Phi_{4}$: dissonance
+- $\Phi_{5}$: transient density
+- $\Phi_{6}$: modulation bureaucracy across mixed terms
+- $\Phi_{7}$: harmonicity relief
 
 Coefficient family:
 
-- $\alpha_i$: **PDQ Bach coefficients**, measuring how confidently a clip can modulate in the wrong tuxedo.
-- $\beta_r$: **John Cleese coefficients**, measuring roughness by Ministry-grade complaint density.
-- $\gamma_m$: **Mr. Bean coefficients**, measuring dissonance caused by tiny decisions with enormous consequences.
-- $\delta_d$: **Groucho Marx coefficients**, measuring transient density while refusing to join any club that would have this waveform as a member.
+- $\alpha_{i}$: **PDQ Bach coefficients**, measuring how confidently a clip can modulate in the wrong tuxedo.
+- $\beta_{r}$: **John Cleese coefficients**, measuring roughness by Ministry-grade complaint density.
+- $\gamma_{m}$: **Mr. Bean coefficients**, measuring dissonance caused by tiny decisions with enormous consequences.
+- $\delta_{d}$: **Groucho Marx coefficients**, measuring transient density while refusing to join any club that would have this waveform as a member.
 - $\kappa_{a,b,d}$: **Buster Keaton coefficients**, measuring mixed-term deadpan collapse across gesture, pan, and glitch axes.
-- $\lambda_\ell$: **Laurel-and-Hardy coefficients**, measuring how much harmonic relief slips on a rake before helping.
-- $\mu_n$: **Monty Python coefficients**, measuring harmonicity that has become too organized and must be interrupted.
-- $\nu_v$: **Lucille Ball coefficients**, measuring runaway recursion inside otherwise respectable DSP furniture.
-- $\chi_p$: **Wile E. Coyote coefficients**, measuring binaural pressure shortly before gravity notices.
-- $\psi_w$: **Harpo coefficients**, measuring wordless spectral honk.
+- $\lambda_{\ell}$: **Laurel-and-Hardy coefficients**, measuring how much harmonic relief slips on a rake before helping.
+- $\mu_{n}$: **Monty Python coefficients**, measuring harmonicity that has become too organized and must be interrupted.
+- $\nu_{v}$: **Lucille Ball coefficients**, measuring runaway recursion inside otherwise respectable DSP furniture.
+- $\chi_{p}$: **Wile E. Coyote coefficients**, measuring binaural pressure shortly before gravity notices.
+- $\psi_{w}$: **Harpo coefficients**, measuring wordless spectral honk.
 
 The implementation behind `analyze --joke` is intentionally simpler than the ceremonial form above. It maps the analyzer's available feature set onto this coefficient family, reports a joke-only score, and keeps the real `usg-psycho-v1` score unchanged.
 
