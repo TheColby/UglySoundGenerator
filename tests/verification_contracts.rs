@@ -224,6 +224,14 @@ fn piece_manifest_records_reproducible_event_seed_plan() {
         "1",
         "--layer-rerolls",
         "2",
+        "--sections",
+        "3",
+        "--rest-probability",
+        "0.25",
+        "--section-contrast",
+        "0.6",
+        "--return-probability",
+        "0.4",
     ]);
 
     let manifest: Value =
@@ -240,6 +248,19 @@ fn piece_manifest_records_reproducible_event_seed_plan() {
     );
     let events = manifest["events"].as_array().expect("events");
     assert!(!events.is_empty(), "piece manifest should include events");
+    assert_eq!(manifest["sections"].as_u64(), Some(3));
+    assert_eq!(manifest["rest_probability"].as_f64(), Some(0.25));
+    assert_eq!(manifest["section_contrast"].as_f64(), Some(0.6));
+    assert_eq!(manifest["return_probability"].as_f64(), Some(0.4));
+    assert!(
+        manifest["planned_event_count"].as_u64().is_some(),
+        "manifest should record planned event count: {manifest:#}"
+    );
+    assert_eq!(
+        manifest["event_count"].as_u64(),
+        Some(events.len() as u64),
+        "rendered event count should match event rows"
+    );
     for event in events {
         assert!(
             event["seed"].is_u64(),
@@ -252,6 +273,14 @@ fn piece_manifest_records_reproducible_event_seed_plan() {
         assert!(
             event["start_s"].is_number() || event["start_frame"].is_u64(),
             "event should record placement timing: {event:#}"
+        );
+        assert!(
+            event["section_index"].is_u64(),
+            "event should record macro section: {event:#}"
+        );
+        assert!(
+            event["return_point"].is_boolean(),
+            "event should record return-point status: {event:#}"
         );
     }
 }

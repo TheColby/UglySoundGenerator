@@ -91,6 +91,12 @@ Render a one-minute piece that follows a rising ugliness trajectory:
 cargo run -- piece --output out/rising_ugliness.wav --duration 60 --layout stereo --scene arcade-collapse --ugliness-trajectory-json '{"version":1,"interpolation":"linear","points":[{"t":0.0,"colbys":-700},{"t":0.5,"colbys":150},{"t":1.0,"colbys":950}]}' --manifest out/rising_ugliness.manifest.json --seed 43003
 ```
 
+Render a v0.7 sectional piece with rests, contrast, and return points:
+
+```bash
+cargo run -- piece --output out/sectional.wav --duration 60 --sections 5 --rest-probability 0.28 --section-contrast 0.7 --return-probability 0.25 --manifest out/sectional.manifest.json
+```
+
 Render an Atmos-style piece with height channels:
 
 ```bash
@@ -123,9 +129,15 @@ The repo has a lot in it, so the intended hierarchy matters:
 
 If you are new to the project, start with the first two layers and ignore the rest until you need them.
 
+## v0.7 Composition Surface
+
+The v0.7 slice makes `piece` less like a homogeneous event sprinkler and more like a tiny ugly-composition machine. `--sections` divides a render into macro regions, `--rest-probability` creates real space, `--section-contrast` pushes sections toward different ugliness targets, and `--return-probability` lets later sections briefly revisit opening behavior.
+
+Manifests now capture these macro controls, planned versus rendered event counts, and each rendered event's `section_index` and `return_point`, so a piece can be inspected or recreated without guessing where its phrase-level decisions came from.
+
 ## Speech Surface
 
-The v0.5 speech system is a power-user surface for ugly but inspectable chip speech. `speech` accepts inline text or a UTF-8 text file, normalizes text by default, parses it into character/word/sentence/paragraph units, and can export both psychoacoustic analysis JSON and a phoneme timeline JSON for parser diagnostics.
+The speech system is a power-user surface for ugly but inspectable chip speech. `speech` accepts inline text or a UTF-8 text file, normalizes text by default, parses it into character/word/sentence/paragraph units, and can export both psychoacoustic analysis JSON and a phoneme timeline JSON for parser diagnostics.
 
 Current speech profiles are `votrax-sc01`, `tms5220`, `sp0256`, `mea8000`, `s14001a`, `c64-sam`, `arcadey90s`, `handheld-lcd`, `speak-and-spell`, `macintalk`, `yamaha-psg`, and `amiga-narrator`. Profiles map to chip-specific backend families (`lpc`, `formant-grid`, `sam-vocal-tract`, `arcade-pcm`, `delta-modulation`, `klatt-cascade`, or `psg-formant`) and can be combined with three oscillator slots selected from 34 oscillator choices plus 12 excitation families.
 

@@ -852,6 +852,10 @@ pub struct PieceOptions {
     pub layer_rerolls: u32,
     pub ugliness_trajectory: Option<UglinessContour>,
     pub channels: u16,
+    pub sections: u16,
+    pub rest_probability: f64,
+    pub section_contrast: f64,
+    pub return_probability: f64,
     pub gain: f64,
     pub normalize: bool,
     pub normalize_dbfs: f64,
@@ -875,6 +879,10 @@ impl Default for PieceOptions {
             layer_rerolls: 0,
             ugliness_trajectory: None,
             channels: 2,
+            sections: 1,
+            rest_probability: 0.0,
+            section_contrast: 0.0,
+            return_probability: 0.0,
             gain: 0.7,
             normalize: true,
             normalize_dbfs: -0.6,
@@ -1055,6 +1063,8 @@ pub struct PieceEventPlan {
     pub ugliness_intensity: f64,
     pub source_xyz: [f64; 3],
     pub pan_width: f64,
+    pub section_index: u16,
+    pub return_point: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1606,11 +1616,23 @@ where
         } else {
             event_idx as f64 / (event_count - 1) as f64
         };
-        let target_colbys = piece_trajectory_colbys(opts.ugliness_trajectory.as_ref(), event_t);
+        let raw_target_colbys = piece_trajectory_colbys(opts.ugliness_trajectory.as_ref(), event_t);
+        let section_index = piece_section_index(opts.sections, event_t);
+        let return_point =
+            section_index > 0 && rng.gen_bool(opts.return_probability.clamp(0.0, 1.0));
+        let target_colbys = piece_section_target_colbys(
+            raw_target_colbys,
+            if return_point { 0 } else { section_index },
+            opts.section_contrast,
+        );
         let ugliness_intensity = colbys_to_intensity(target_colbys).clamp(0.0, 1.0);
         let style =
             pick_piece_style_for_ugliness(&opts.styles, last_style, ugliness_intensity, &mut rng);
         last_style = Some(style);
+        if piece_event_is_rest(opts.rest_probability, ugliness_intensity, &mut rng) {
+            progress(event_idx + 1, event_count, style);
+            continue;
+        }
         let duration_bias = (0.58 + 0.84 * ugliness_intensity).clamp(0.25, 1.5);
         let event_duration_s = (rng.gen_range(opts.min_event_duration..=opts.max_event_duration)
             * duration_bias)
@@ -1712,6 +1734,8 @@ where
             ugliness_intensity,
             source_xyz: source,
             pan_width: width,
+            section_index,
+            return_point,
         });
         progress(event_idx + 1, event_count, style);
     }
@@ -1728,7 +1752,7 @@ where
         channels: layout.channels(),
         layout: Some(layout.as_str()),
         region: opts.region.as_str().to_string(),
-        events: event_count,
+        events: event_plan.len(),
         seed,
         output_encoding: opts.output_encoding,
         backend_requested: plan.requested,
@@ -2273,6 +2297,37 @@ fn piece_trajectory_colbys(contour: Option<&UglinessContour>, t_norm: f64) -> i3
         .map(|c| contour_level_at(c, t_norm).round() as i32)
         .unwrap_or(COLBYS_NEUTRAL)
         .clamp(COLBYS_MIN, COLBYS_MAX)
+}
+
+fn piece_section_index(sections: u16, t_norm: f64) -> u16 {
+    let sections = sections.max(1);
+    let idx = (t_norm.clamp(0.0, 1.0) * sections as f64).floor() as u16;
+    idx.min(sections.saturating_sub(1))
+}
+
+fn piece_section_target_colbys(base_colbys: i32, section_index: u16, contrast: f64) -> i32 {
+    let contrast = contrast.clamp(0.0, 1.0);
+    if contrast <= 0.0 {
+        return base_colbys;
+    }
+    let shape = match section_index % 5 {
+        0 => 0.0,
+        1 => 0.72,
+        2 => -0.55,
+        3 => 1.0,
+        _ => -0.28,
+    };
+    let offset = (shape * contrast * 520.0).round() as i32;
+    (base_colbys + offset).clamp(COLBYS_MIN, COLBYS_MAX)
+}
+
+fn piece_event_is_rest(
+    rest_probability: f64,
+    ugliness_intensity: f64,
+    rng: &mut ChaCha8Rng,
+) -> bool {
+    let chance = rest_probability.clamp(0.0, 0.95) * (0.35 + 0.65 * (1.0 - ugliness_intensity));
+    chance > 0.0 && rng.gen_bool(chance.clamp(0.0, 0.95))
 }
 
 fn mix_piece_layer(base: &mut [f64], layer: &[f64], mix: f64) {
@@ -3352,6 +3407,17 @@ pub fn validate_piece_options(opts: &PieceOptions) -> Result<()> {
     }
     if opts.channels == 0 || opts.channels > 64 {
         return Err(anyhow!("channels must be between 1 and 64"));
+    }
+    if opts.sections == 0 || opts.sections > 128 {
+        return Err(anyhow!("sections must be between 1 and 128"));
+    }
+    if !(0.0..=0.95).contains(&opts.rest_probability)
+        || !(0.0..=1.0).contains(&opts.section_contrast)
+        || !(0.0..=1.0).contains(&opts.return_probability)
+    {
+        return Err(anyhow!(
+            "piece section controls must be in range: rest_probability 0..0.95, section_contrast 0..1, return_probability 0..1"
+        ));
     }
     if let Some(layout) = opts.layout
         && opts.channels != layout.channels()

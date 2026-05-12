@@ -43,6 +43,7 @@ Render a full piece made from many short ugly sounds spread across stereo or arb
 cargo run -- piece --output out/piece.wav --duration 20 --channels 2 --events-per-second 7
 cargo run -- piece --output out/quad.wav --duration 45 --channels 4 --styles glitch,punish,catastrophic
 cargo run -- piece --output out/octo.wav --duration 60 --channels 8 --min-event-duration 0.02 --max-event-duration 0.18 --seed 42
+cargo run -- piece --output out/sectional.wav --duration 60 --sections 5 --rest-probability 0.28 --section-contrast 0.7 --return-probability 0.25 --manifest out/sectional.manifest.json
 cargo run -- piece --output out/atmos.wav --duration 30 --layout 7.1.4 --events-per-second 9
 cargo run -- piece --output out/atmos_924.wav --duration 30 --layout 9.2.4 --events-per-second 11
 ```
@@ -54,6 +55,10 @@ Key options:
 - `--layout <mono|stereo|quad|4.0|5.0|5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4|8.0|8.1|7.2.4|9.2.4|9.1.6|custom:N>`
 - `--sample-rate <HZ>`
 - `--styles <STYLE,...>`
+- `--sections <N>`
+- `--rest-probability <0..0.95>`
+- `--section-contrast <0..1>`
+- `--return-probability <0..1>`
 - `--events-per-second <RATE>`
 - `--min-event-duration <SECONDS>`
 - `--max-event-duration <SECONDS>`
@@ -62,6 +67,14 @@ Key options:
 - `--backend <auto|cpu|metal|cuda>`
 
 When `--layout` is provided, it sets the channel count automatically and uses named speaker positions, including Atmos-style height layouts. The first-class named layouts are `4.0`, `5.0`, `5.1`, `7.1`, `8.0`, `8.1`, `7.1.4`, `7.2.4`, and `9.2.4`, plus legacy/extra helpers `mono`, `stereo`, `quad`, `5.1.2`, `5.1.4`, `7.1.2`, `9.1.6`, and `custom:N`.
+
+The v0.7 composition controls make `piece` more macro-compositional:
+
+- `--sections` divides the piece into phrase-scale regions.
+- `--rest-probability` turns some planned events into actual space, weighted toward less-ugly regions.
+- `--section-contrast` pushes alternating sections toward different ugliness targets before style selection.
+- `--return-probability` lets later sections briefly reuse the opening-section behavior.
+- Manifest exports record `planned_event_count`, rendered `event_count`, `sections`, rest/contrast/return settings, plus each rendered event's `section_index` and `return_point`.
 
 #### Named Randomness Recipes
 

@@ -12,7 +12,7 @@ The next milestones focus on making those surfaces deeper, more reproducible, an
 
 ## Current Baseline
 
-As of the current `v0.6` docs slice, USG already includes:
+As of the current `v0.7` docs slice, USG already includes:
 
 - `render`, `piece`, `chain`, `go`, and `analyze` as the main product surface
 - speech synthesis with chip-inspired profiles, profile-specific backend models, phoneme timelines, text normalization, and analysis export
@@ -22,6 +22,7 @@ As of the current `v0.6` docs slice, USG already includes:
 - benchmark reports with timing and score-consistency fields
 - contour-driven `go` processing and multichannel upmix workflows
 - multichannel `piece` generation, including named Atmos-style layouts
+- macro-composition controls for `piece`: sections, rests, section contrast, and return points
 - colored interactive progress feedback during piece assembly
 - example corpus generation and repo verification scripts
 
@@ -80,6 +81,24 @@ Still useful follow-up:
 - stronger contracts for seeded reproducibility and profile stability across releases
 - better analysis of multichannel and Atmos-style pieces, including spatial activity summaries
 
+### `v0.7`: Macro Composition
+
+Goal: make `piece` behave more like a composition tool and less like a flat cloud of events.
+
+Current surface:
+
+- `piece --sections <N>` divides a render into phrase-scale regions.
+- `piece --rest-probability <0..0.95>` leaves intentional space, weighted toward lower-ugliness moments.
+- `piece --section-contrast <0..1>` offsets per-section ugliness targets before style selection.
+- `piece --return-probability <0..1>` lets later sections briefly return to opening-section behavior.
+- piece manifests record the macro controls and each event's `section_index` and `return_point`.
+
+Still useful follow-up:
+
+- section presets with named shapes such as arch, collapse, swarm, sparse clicks, and false ending
+- per-section style sets and channel-region targeting
+- timeline exports for rests, not just rendered events
+
 ## Medium-Term Themes
 
 ### Architecture Cleanup
@@ -124,7 +143,7 @@ That means future work should keep balancing spectacle with clarity: more range,
 
 If we want the highest-payoff next step, it should be:
 
-1. make `piece` more musical at the macro level with sections, ramps, rests, and return points
+1. add section presets and per-section style/channel targeting for `piece`
 2. make speech more preset-driven at the recipe level with curated chip/era packs and terminal-friendly phoneme diagnostics
 3. make analysis explain itself better so users can connect what they hear to what USG measured
 
@@ -137,5 +156,6 @@ flowchart TD
   A["v0.4.0 baseline with piece and speech"] --> B["v0.4.x composition and randomness"]
   B --> C["v0.5 deeper chip speech surface"]
   C --> D["v0.6 analysis and explanation"]
-  D --> E["modular research-grade ugliness lab"]
+  D --> E["v0.7 macro composition"]
+  E --> F["modular research-grade ugliness lab"]
 ```

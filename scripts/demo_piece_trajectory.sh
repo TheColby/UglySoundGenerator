@@ -16,6 +16,10 @@ $BIN piece \
   --duration "${DURATION:-60}" \
   --layout stereo \
   --styles "${EVENT_STYLES:-pop,glitch,spank,steal,catastrophic}" \
+  --sections "${SECTIONS:-6}" \
+  --rest-probability "${REST_PROBABILITY:-0.38}" \
+  --section-contrast "${SECTION_CONTRAST:-0.72}" \
+  --return-probability "${RETURN_PROBABILITY:-0.18}" \
   --events-per-second "${EVENTS_PER_SECOND:-4.5}" \
   --min-event-duration "${MIN_EVENT_DURATION:-0.004}" \
   --max-event-duration "${MAX_EVENT_DURATION:-0.04}" \

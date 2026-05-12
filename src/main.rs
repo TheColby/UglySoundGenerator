@@ -180,6 +180,22 @@ struct PieceArgs {
     #[arg(long, value_enum, default_value_t = PieceRegionArg::Full)]
     region: PieceRegionArg,
 
+    /// Number of macro sections used for contrast, rests, and return gestures.
+    #[arg(long, default_value_t = 1)]
+    sections: u16,
+
+    /// Probability that a planned piece event becomes a rest/space.
+    #[arg(long, default_value_t = 0.0)]
+    rest_probability: f64,
+
+    /// Section-level contrast amount for target ugliness, duration, and gain.
+    #[arg(long, default_value_t = 0.0)]
+    section_contrast: f64,
+
+    /// Probability that later sections briefly return to the opening section behavior.
+    #[arg(long, default_value_t = 0.0)]
+    return_probability: f64,
+
     /// Average number of short ugly events per second.
     #[arg(long, default_value_t = 5.0)]
     events_per_second: f64,
