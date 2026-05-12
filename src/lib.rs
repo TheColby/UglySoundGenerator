@@ -554,12 +554,16 @@ pub enum SurroundLayout {
     Mono,
     Stereo,
     Quad,
+    FiveZero,
     FiveOne,
     FiveOneTwo,
     FiveOneFour,
     SevenOne,
     SevenOneTwo,
     SevenOneFour,
+    EightZero,
+    SevenTwoFour,
+    NineTwoFour,
     NineOneSix,
     Custom(u16),
 }
@@ -602,13 +606,17 @@ impl SurroundLayout {
         match self {
             SurroundLayout::Mono => "mono".to_string(),
             SurroundLayout::Stereo => "stereo".to_string(),
-            SurroundLayout::Quad => "quad".to_string(),
+            SurroundLayout::Quad => "4.0".to_string(),
+            SurroundLayout::FiveZero => "5.0".to_string(),
             SurroundLayout::FiveOne => "5.1".to_string(),
             SurroundLayout::FiveOneTwo => "5.1.2".to_string(),
             SurroundLayout::FiveOneFour => "5.1.4".to_string(),
             SurroundLayout::SevenOne => "7.1".to_string(),
             SurroundLayout::SevenOneTwo => "7.1.2".to_string(),
             SurroundLayout::SevenOneFour => "7.1.4".to_string(),
+            SurroundLayout::EightZero => "8.0".to_string(),
+            SurroundLayout::SevenTwoFour => "7.2.4".to_string(),
+            SurroundLayout::NineTwoFour => "9.2.4".to_string(),
             SurroundLayout::NineOneSix => "9.1.6".to_string(),
             SurroundLayout::Custom(n) => format!("custom:{n}"),
         }
@@ -619,12 +627,16 @@ impl SurroundLayout {
             SurroundLayout::Mono => 1,
             SurroundLayout::Stereo => 2,
             SurroundLayout::Quad => 4,
+            SurroundLayout::FiveZero => 5,
             SurroundLayout::FiveOne => 6,
             SurroundLayout::FiveOneTwo => 8,
             SurroundLayout::FiveOneFour => 10,
             SurroundLayout::SevenOne => 8,
             SurroundLayout::SevenOneTwo => 10,
             SurroundLayout::SevenOneFour => 12,
+            SurroundLayout::EightZero => 8,
+            SurroundLayout::SevenTwoFour => 13,
+            SurroundLayout::NineTwoFour => 15,
             SurroundLayout::NineOneSix => 16,
             SurroundLayout::Custom(n) => n.max(1),
         }
@@ -7358,6 +7370,16 @@ fn speaker_positions(layout: SurroundLayout) -> (Vec<[f64; 3]>, Option<usize>) {
             ],
             None,
         ),
+        SurroundLayout::FiveZero => (
+            vec![
+                azimuth_deg(-30.0),  // L
+                azimuth_deg(30.0),   // R
+                azimuth_deg(0.0),    // C
+                azimuth_deg(-110.0), // Ls
+                azimuth_deg(110.0),  // Rs
+            ],
+            None,
+        ),
         SurroundLayout::FiveOne => (
             vec![
                 azimuth_deg(-30.0),  // L
@@ -7431,6 +7453,57 @@ fn speaker_positions(layout: SurroundLayout) -> (Vec<[f64; 3]>, Option<usize>) {
                 azimuth_deg(30.0),    // R
                 azimuth_deg(0.0),     // C
                 [0.0, 0.5, 0.0],      // LFE
+                azimuth_deg(-90.0),   // Lss
+                azimuth_deg(90.0),    // Rss
+                azimuth_deg(-150.0),  // Lrs
+                azimuth_deg(150.0),   // Rrs
+                [-0.45, 0.35, 0.85],  // Ltf
+                [0.45, 0.35, 0.85],   // Rtf
+                [-0.45, -0.35, 0.85], // Ltr
+                [0.45, -0.35, 0.85],  // Rtr
+            ],
+            Some(3),
+        ),
+        SurroundLayout::EightZero => (
+            vec![
+                azimuth_deg(-30.0),  // L
+                azimuth_deg(30.0),   // R
+                azimuth_deg(0.0),    // C
+                azimuth_deg(180.0),  // Cs
+                azimuth_deg(-90.0),  // Lss
+                azimuth_deg(90.0),   // Rss
+                azimuth_deg(-150.0), // Lrs
+                azimuth_deg(150.0),  // Rrs
+            ],
+            None,
+        ),
+        SurroundLayout::SevenTwoFour => (
+            vec![
+                azimuth_deg(-30.0),   // L
+                azimuth_deg(30.0),    // R
+                azimuth_deg(0.0),     // C
+                [0.0, 0.55, 0.0],     // LFE1
+                [0.0, -0.55, 0.0],    // LFE2
+                azimuth_deg(-90.0),   // Lss
+                azimuth_deg(90.0),    // Rss
+                azimuth_deg(-150.0),  // Lrs
+                azimuth_deg(150.0),   // Rrs
+                [-0.45, 0.35, 0.85],  // Ltf
+                [0.45, 0.35, 0.85],   // Rtf
+                [-0.45, -0.35, 0.85], // Ltr
+                [0.45, -0.35, 0.85],  // Rtr
+            ],
+            Some(3),
+        ),
+        SurroundLayout::NineTwoFour => (
+            vec![
+                azimuth_deg(-30.0),   // L
+                azimuth_deg(30.0),    // R
+                azimuth_deg(0.0),     // C
+                [0.0, 0.55, 0.0],     // LFE1
+                [0.0, -0.55, 0.0],    // LFE2
+                azimuth_deg(-60.0),   // Lw
+                azimuth_deg(60.0),    // Rw
                 azimuth_deg(-90.0),   // Lss
                 azimuth_deg(90.0),    // Rss
                 azimuth_deg(-150.0),  // Lrs

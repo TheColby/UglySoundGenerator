@@ -285,40 +285,55 @@ fn piece_generates_requested_channel_count() {
 #[test]
 fn piece_supports_atmos_layouts() {
     let dir = temp_dir("piece_atmos");
-    let wav = dir.join("piece_714.wav");
+    let layouts = [
+        ("4.0", 4),
+        ("5.0", 5),
+        ("5.1", 6),
+        ("7.1", 8),
+        ("8.0", 8),
+        ("7.1.4", 12),
+        ("7.2.4", 13),
+        ("9.2.4", 15),
+    ];
 
-    let render = Command::new(bin())
-        .args([
-            "piece",
-            "--output",
-            wav.to_str().expect("wav path"),
-            "--duration",
-            "0.5",
-            "--layout",
-            "7.1.4",
-            "--events-per-second",
-            "7",
-            "--min-event-duration",
-            "0.02",
-            "--max-event-duration",
-            "0.05",
-            "--seed",
-            "99",
-        ])
-        .output()
-        .expect("piece atmos command");
-    assert!(
-        render.status.success(),
-        "piece atmos failed: {}",
-        String::from_utf8_lossy(&render.stderr)
-    );
+    for (layout, channels) in layouts {
+        let wav = dir.join(format!("piece_{}.wav", layout.replace('.', "_")));
+        let render = Command::new(bin())
+            .args([
+                "piece",
+                "--output",
+                wav.to_str().expect("wav path"),
+                "--duration",
+                "0.2",
+                "--layout",
+                layout,
+                "--events-per-second",
+                "4",
+                "--min-event-duration",
+                "0.01",
+                "--max-event-duration",
+                "0.03",
+                "--seed",
+                "99",
+            ])
+            .output()
+            .expect("piece atmos command");
+        assert!(
+            render.status.success(),
+            "piece atmos {layout} failed: {}",
+            String::from_utf8_lossy(&render.stderr)
+        );
 
-    let stdout = String::from_utf8_lossy(&render.stdout);
-    assert!(stdout.contains("layout=7.1.4"), "stdout was:\n{stdout}");
+        let stdout = String::from_utf8_lossy(&render.stdout);
+        assert!(
+            stdout.contains(&format!("layout={layout}")),
+            "stdout was:\n{stdout}"
+        );
 
-    let reader = WavReader::open(&wav).expect("wav reader");
-    let spec = reader.spec();
-    assert_eq!(spec.channels, 12);
+        let reader = WavReader::open(&wav).expect("wav reader");
+        let spec = reader.spec();
+        assert_eq!(spec.channels, channels, "layout {layout}");
+    }
 }
 
 #[test]

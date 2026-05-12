@@ -95,7 +95,10 @@ Render an Atmos-style piece with height channels:
 
 ```bash
 cargo run -- piece --output out/piece_714.wav --duration 30 --layout 7.1.4 --events-per-second 9
+cargo run -- piece --output out/piece_924.wav --duration 30 --layout 9.2.4 --events-per-second 11
 ```
+
+Supported named surround/Atmos-style piece layouts include `4.0`, `5.0`, `5.1`, `7.1`, `8.0`, `7.1.4`, `7.2.4`, and `9.2.4`, with `custom:N` still available for arbitrary channel-count experiments.
 
 ## One Metric, One Meaning
 
